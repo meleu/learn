@@ -1,6 +1,6 @@
 ---
 name: teach
-description: Teach the user a new skill or concept, within this workspace.
+description: Teach the user a new skill or concept, in a teaching workspace (a subdirectory of this project).
 disable-model-invocation: true
 argument-hint: "What would you like to learn about?"
 ---
@@ -9,15 +9,27 @@ The user has asked you to teach them something. This is a stateful request - the
 
 ## Teaching Workspace
 
-Treat the current directory as a teaching workspace. The state of their learning is captured in this directory in several files:
+This project holds many teaching workspaces. Each immediate subdirectory of the project root is one workspace, devoted to one topic and named in dash-case. `assets/` at the project root is reserved: it is the shared component library, never a workspace.
+
+Before anything else, check that the current directory is a workspace and not the project root:
+
+```sh
+[ "$PWD" = "$(git rev-parse --show-toplevel)" ] && echo "PROJECT ROOT"
+```
+
+If it is the project root, **stop** and inform the user.
+
+Otherwise, treat the current directory as the teaching workspace. The state of their learning is captured in this directory in several files:
 
 - `MISSION.md`: A document capturing the _reason_ the user is interested in the topic. This should be used to ground all teaching. Use the format in [MISSION-FORMAT.md](./MISSION-FORMAT.md).
 - `./reference/*.html`: A directory of reference materials. These are the compressed learnings from the lessons - cheat sheets, reference algorithms, syntax, yoga poses, glossaries. They are the raw units of learning. They should be beautiful documents which print out well, and are designed for quick reference.
 - `RESOURCES.md`: A list of resources which can be explored to ground your teaching in contextual knowledge, or to acquire knowledge and wisdom. Use the format in [RESOURCES-FORMAT.md](./RESOURCES-FORMAT.md).
 - `./learning-records/*.md`: A directory of learning records, which capture what the user has learned. These are loosely equivalent to architectural decision records in software development - they capture non-obvious lessons and key insights that may need to be revised later, or drive future sessions. These should be used to calculate the zone of proximal development. They are titled `0001-<dash-case-name>.md`, where the number increments each time. Use the format in [LEARNING-RECORD-FORMAT.md](./LEARNING-RECORD-FORMAT.md).
 - `./lessons/*.html`: A directory of lessons. A **lesson** is a single, self-contained HTML output that teaches one tightly-scoped thing tied to the mission. This is the primary unit of teaching in this workspace.
-- `./assets/*`: Reusable **components** shared across lessons. See [Assets](#assets).
+- `../assets/*`: Reusable **components** shared across the lessons of _every_ workspace in this project. This is the one thing workspaces share. See [Assets](#assets).
 - `NOTES.md`: A scratchpad for you to jot down user preferences, or working notes.
+
+Workspaces are otherwise hermetic. Read the current workspace and `../assets/`, and nothing else: never read a sibling workspace's mission, resources, notes or learning records.
 
 ## Philosophy
 
@@ -62,11 +74,19 @@ Each lesson should contain a reminder to ask followup questions to the agent. Th
 
 ## Assets
 
-Lessons are built from reusable **components**, stored in `./assets/`: stylesheets, quiz widgets, simulators, diagram helpers, and anything else a second lesson could reuse.
+Lessons are built from reusable **components**: stylesheets, quiz widgets, simulators, diagram helpers, and anything else a second lesson could reuse. They live in a single library at `../assets/`, shared by every workspace in the project.
 
-Reuse is the default, not the exception. Before authoring a lesson, read `./assets/` and build from the components already there. When a lesson needs something new and reusable, write it as a component in `./assets/` and link to it; never inline code a future lesson would duplicate.
+Reuse is the default, not the exception. Before authoring a lesson, run `ls ../assets/` and skim the purpose comment at the top of each plausible candidate; read the full body only of the components you are actually going to use. When a lesson needs something new and reusable, write it as a component in `../assets/` and link to it; never inline code a future lesson would duplicate.
 
-A shared stylesheet is the first component every workspace earns: every lesson links it, so the lessons look like one consistent course rather than a pile of one-offs. As the workspace grows, so should the component library.
+Rules for the library:
+
+- **Flat.** No subdirectories. `ls ../assets/` is the entire index, so keep it legible.
+- **Descriptive kebab-case names.** The filename is how a component gets found, so it must carry the meaning: `quiz-multiple-choice.js`, not `quiz.js`. Components that serve only one topic belong here too, with the topic in the name: `chess-board.js`, `yoga-asana-diagram.js`.
+- **A purpose comment at the top of every file.** One line saying what the component is.
+- **Link with `../../assets/`.** Both `lessons/` and `reference/` sit exactly two levels below the project root. That depth is hardcoded into every link, so neither directory may ever contain subdirectories.
+- **Edit freely.** Components are living code. Changing one changes lessons in other workspaces, and that is fine: older lessons inherit the improvements.
+
+`base.css` is the first component the project earns: every lesson in every workspace links it, so the whole library reads as one course rather than a pile of one-offs. Add a further stylesheet only where a topic's content genuinely demands it, such as board diagrams or syntax highlighting. As the project grows, so should the component library.
 
 ## The Mission
 
