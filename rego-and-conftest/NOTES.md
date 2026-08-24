@@ -4,8 +4,7 @@
 
 - **Both modes, every lesson**: browser reading + quiz, then a terminal drill to confirm.
   Do not ship a lesson that is quiz-only or drill-only.
-- **Simple examples over realistic ones** when teaching a concept. the user asked for lesson 1's
-  Kubernetes example to be replaced with a minimal `input.age >= 18` age check — domain detail
+- **Simple examples over realistic ones** when teaching a concept. Domain detail
   competes with the idea being taught. Save the work-shaped configs for lessons where the
   *format* is the point.
 - **Engine before wrapper.** the user explicitly asked that conftest be kept out of the early
@@ -30,16 +29,31 @@ in particular is unusual for conftest material and worth covering properly
 
 ## Teaching backlog (candidate next lessons)
 
-1. Partial/multi-value rules — `contains`, sets, and why a set of messages is the shape every
-   real policy converges on. (Lesson 1 already promised sets "in the next lesson".)
-2. Rule bodies as AND, multiple rules as OR (the two-operator model).
-3. Iteration: `some ... in`, `[_]`, and why "for loop" is the wrong intuition.
-4. Undefined vs false vs empty — the top source of confusion (seeded in lesson 1).
+1. ~~Partial/multi-value rules — `contains`, sets~~ → **shipped as lesson 2** (`0002-many-rules-one-set.html`).
+   Covered: the complete-rule conflict error as motivation, `contains`, incremental/additive
+   definitions, empty set = pass, dedupe/no order, and the missing-key silent pass.
+   Also consumed part of backlog item 4 (undefined vs false vs empty), so item 4 no longer needs
+   its own lesson — fold the leftovers (`null`, explicit type checks) into a later one.
+2. ~~Undefined vs false vs empty~~ — largely absorbed by lessons 1 and 2. See item 1.
+3. Rule bodies as AND, multiple rules as OR (the two-operator model). **Next up** — lesson 2 ends
+   on a conftest `deny` preview with a multi-line body and a `msg :=` variable, both deliberately
+   unexplained. That preview is the natural hook for lesson 3.
+4. Iteration: `some ... in`, `[_]`, and why "for loop" is the wrong intuition.
 5. Testing policies with `opa test` — policies need tests too, and this is still pure OPA.
 6. **Only then** conftest: what the wrapper adds, `deny`/`warn`, namespaces, `--combine`,
    exceptions. Introduce it as "here is the convention layered on what you already know".
 7. Non-Kubernetes parsers: Dockerfile, XML (`pom.xml`), `.gitlab-ci.yml`.
 8. CI wiring in GitLab.
+
+## Open threads to check on next session
+
+- Drill step 7 of lesson 2 asks the user to write a fourth rule with **no snippet given** (report a
+  missing `age`). First unassisted authoring in this workspace — ask how it went; the expected
+  answer is `violations contains "age is required" if not input.age`.
+- Lesson 2's `ask-teacher` box dangles four questions on purpose: set vs array, mixing `contains`
+  and `:=` on one key, why a multi-line body needs no `and`, and how to word a good message.
+- No learning record written for lesson 2 yet — coverage is not learning. Write one once the user
+  gives evidence (drill results, a question that shows the model landed, or a correction).
 
 ## Verified format quirks (for future lessons)
 
@@ -82,11 +96,15 @@ Confirmed locally, session 1, so the future conftest lesson does not need to re-
 - Practice files live in `exercises/NNN/` **inside the workspace**, not in a home directory
   scratch dir. Drills should follow that layout. `exercises/001/` holds their work from the
   first (now superseded) Kubernetes drill — do not overwrite it; new drills get new directories.
+  Lesson 2's drill uses `exercises/002-partial-set-rules/`.
+- Brings their own example code to a lesson request (lesson 2's `package signup` snippet was
+  theirs, verbatim). Use what they hand over rather than substituting something "better" —
+  and verify it runs before it goes on the page.
 - Formats Rego by hand into multi-line `sprintf` calls with trailing commas, i.e. `opa fmt`
   style. Match that style in lesson code so nothing looks "off" after they reformat.
 
 ## Shared asset library
 
 `../assets/` is shared with sibling workspaces. `code-copy-button.js` appeared there from
-outside this workspace and is now wired into all three of this workspace's pages. Re-check
+outside this workspace and is now wired into all four of this workspace's pages. Re-check
 `ls ../assets/` at the start of each session — the library moves independently.

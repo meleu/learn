@@ -63,7 +63,10 @@ opa eval --format pretty 'x := 21; y := x * 2'
 opa eval --explain full --format pretty -d policy.rego -i input.json 'data.example.allow'
 
 # pipe the input in instead of using a file
-echo '{"age": 21}' | opa eval -d policy.rego -I 'data.example' --format pretty</code></pre>
+echo '{"age": 21}' | opa eval -d policy.rego -I 'data.example' --format pretty
+
+# did it pass? the idiomatic check on a set of messages
+opa eval -d policy.rego -i input.json 'count(data.signup.violations)' --format pretty</code></pre>
 </figure>
 
 <h2>Reading the output</h2>
@@ -113,8 +116,11 @@ default allow := false
 allow if {
 	input.age >= 18
 	input.country == "BR"
-}</code></pre>
-<figcaption>Everything beyond this — sets, iteration, functions — arrives in later lessons and
+}
+
+# `contains` makes a set rule: many rules add to one key, never conflicting
+violations contains "too young" if input.age < 18</code></pre>
+<figcaption>Everything beyond this — iteration, functions, objects — arrives in later lessons and
 will be added here as it does.</figcaption>
 </figure>
 
@@ -133,6 +139,7 @@ will be added here as it does.</figcaption>
     <li><a href="0001-glossary.html">Reference 1 — Glossary</a></li>
     <li><a href="../lessons/0001-rego-builds-a-json-document.html">Lesson 1 — Rego Builds a JSON
     Document</a></li>
+    <li><a href="../lessons/0002-many-rules-one-set.html">Lesson 2 — Many Rules, One Set</a></li>
   </ul>
   <div class="ask-teacher">
     <strong>This sheet grows with the course.</strong> When a command earns its place in your

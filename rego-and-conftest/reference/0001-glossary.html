@@ -96,8 +96,14 @@ preparing a session for coworkers, budget extra time for those.</p>
     <tr>
       <td><strong>Partial / multi-value rule</strong> †</td>
       <td>Contributes members to a <em>set</em>. Many bodies may contribute; zero contributions
-      is a valid empty set.</td>
+      is a valid empty set. Unlike a complete rule, it is <em>always defined</em>.</td>
       <td><code>deny contains msg if { … }</code></td>
+    </tr>
+    <tr>
+      <td><strong>Incremental</strong></td>
+      <td>The docs' word for several definitions of one rule name: each is
+      <em>additive</em>, so they collect rather than conflict. Order in the file is irrelevant.</td>
+      <td>Three <code>deny contains …</code> rules build one <code>deny</code> set.</td>
     </tr>
     <tr>
       <td><strong>Default rule</strong></td>
@@ -153,6 +159,10 @@ preparing a session for coworkers, budget extra time for those.</p>
     <tr><td><code>some</code></td><td>Declares a variable as free, to be searched over. <code>some x in arr</code>.</td></tr>
     <tr><td><code>every</code></td><td>Asserts a condition holds for all members of a collection.</td></tr>
     <tr><td><code>_</code></td><td>Anonymous iteration variable. <code>arr[_]</code> means "any element of arr".</td></tr>
+    <tr><td><code>contains</code> †</td><td>Makes a rule a partial set rule. <code>s contains x if b</code> reads "when <code>b</code> holds, <code>x</code> belongs to <code>s</code>".</td></tr>
+    <tr><td><strong>Set</strong> †</td><td>Unordered collection, no duplicates. Rego's one type that JSON lacks — OPA serialises it as an array on output, which is a printing detail, not an ordering promise.</td></tr>
+    <tr><td><code>in</code></td><td>Membership. <code>x in s</code> holds when <code>x</code> is a member of the collection <code>s</code>.</td></tr>
+    <tr><td><code>count()</code></td><td>Size of a collection. <code>count(deny) == 0</code> is the idiomatic "did it pass?".</td></tr>
     <tr><td><strong>Safety</strong></td><td>A compile-time guarantee: every variable must be bound by a non-negated expression somewhere. This is why <code>not</code> on an unbound variable is a compile error, not a runtime surprise.</td></tr>
     <tr><td><strong>Rego v1</strong> †</td><td>The current language version (OPA ≥ 1.0). <code>if</code> and <code>contains</code> are mandatory. Pre-2024 examples on the web are mostly v0 and will not parse.</td></tr>
   </tbody>
@@ -173,6 +183,7 @@ preparing a session for coworkers, budget extra time for those.</p>
   <ul>
     <li><a href="../lessons/0001-rego-builds-a-json-document.html">Lesson 1 — Rego Builds a JSON
     Document</a></li>
+    <li><a href="../lessons/0002-many-rules-one-set.html">Lesson 2 — Many Rules, One Set</a></li>
     <li><a href="0002-opa-cli-cheatsheet.html">Reference 2 — OPA CLI cheat sheet</a></li>
   </ul>
   <div class="ask-teacher">

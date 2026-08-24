@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 2 · Many Rules, One Set</title>
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" href="../../assets/flow-boxes.css">
+</head>
+<body>
+<main class="sheet">
+
+<header class="masthead">
+  <p class="eyebrow">Rego &amp; Conftest · Lesson 2</p>
+  <h1>Many Rules, One Set</h1>
+  <p class="standfirst">A real policy has to say <em>several</em> things at once. One keyword —
+  <code>contains</code> — turns a pile of independent rules into a single collected answer. This
+  is the shape every policy you write at work will have.</p>
+</header>
+
+<div class="callout good">
+  <p class="callout-title">Your win for this lesson</p>
+  <p>By the end you can write a policy that collects <em>every</em> problem with an input into one
+  set of messages, explain why a passing check produces an empty set rather than nothing at all,
+  and say out loud the one sentence that makes <code>contains</code> obvious to a coworker.</p>
+</div>
+
+<p><a href="0001-rego-builds-a-json-document.html">Lesson 1</a> left you with a rule that answers
+one question with one value: <code>allow</code> is <code>true</code>, or the key is absent. That
+is a <strong>complete rule</strong>, and it is the right tool for a yes/no verdict.</p>
+
+<p>But the verdict is not what a person needs. When your pipeline rejects a config, the useful
+output is not <code>false</code> — it is <em>the list of things that are wrong</em>. All of them,
+in one pass, so the author fixes everything before pushing again.</p>
+
+<h2>1 · Why a complete rule cannot do this</h2>
+
+<p>The obvious first attempt is to write two rules with the same name, each producing a message.
+Try it and Rego stops you:</p>
+
+<figure>
+  <p class="code-label">conflict.rego — this does not work</p>
+<pre><code class="lang-rego">package conflict
+
+violation := "age must be at least 18" if input.age &lt; 18
+
+violation := "username is required" if not input.username</code></pre>
+</figure>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d conflict.rego -i input.json 'data.conflict' --format pretty</code></pre>
+<pre><code class="lang-shell">1 error occurred: conflict.rego:3: eval_conflict_error: complete rules must not produce multiple outputs</code></pre>
+<figcaption>Verified output, OPA 1.19.0, with <code>input</code> of <code>{"age": 16}</code>.</figcaption>
+</figure>
+
+<p>This is not a limitation to work around. It is the docs being strict about a promise:
+<a href="https://www.openpolicyagent.org/docs/policy-language">"Documents produced by rules with
+complete definitions can only have one value at a time… If evaluation produces multiple values for
+the same document, an error will be returned."</a><a href="#src-1">¹</a> A key in a JSON document
+holds one value. Two rules claiming that key is a genuine contradiction, and OPA refuses to pick a
+winner.</p>
+
+<div class="key-idea">
+  <p>So the fix is not to make the rules quieter. It is to change <strong>what kind of thing the
+  key holds</strong>: not one message, but a <em>collection</em> of them — where "two rules both
+  had something to say" is normal rather than contradictory.</p>
+</div>
+
+<h2>2 · <code>contains</code>: each rule adds one member</h2>
+
+<p>Swap <code>:=</code> for <code>contains</code> and the same three rules cooperate instead of
+colliding. This is the whole lesson:</p>
+
+<figure>
+  <p class="code-label">policy.rego</p>
+<pre><code class="lang-rego">package signup
+
+# each rule adds ONE message to the `violations` set — when its body holds
+violations contains "age must be at least 18" if input.age &lt; 18
+
+# `not input.username` holds when the key is absent (undefined)
+violations contains "username is required" if not input.username
+
+# `== ""` holds when the key is present but empty
+violations contains "username can't be empty" if input.username == ""</code></pre>
+</figure>
+
+<p>A rule written this way is a <strong>partial set rule</strong> — the docs also call it a
+<em>multi-value rule</em>. Each definition is a partial, incomplete description of the final key;
+put together, they complete it. The reference word is <strong>incremental</strong>:
+<a href="https://www.openpolicyagent.org/docs/policy-language">"the rule definition is called
+<em>incremental</em> because each definition is additive."</a><a href="#src-1">¹</a></p>
+
+<div class="flow">
+  <div class="box policy">
+    <div class="t">rule 1</div>
+    <div class="d">body holds<br>→ adds its message</div>
+  </div>
+  <div class="box policy">
+    <div class="t">rule 2</div>
+    <div class="d">body holds<br>→ adds its message</div>
+  </div>
+  <div class="box policy">
+    <div class="t">rule 3</div>
+    <div class="d">body fails<br>→ adds nothing</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="box">
+    <div class="t"><code>violations</code></div>
+    <div class="d">one set, two members</div>
+  </div>
+</div>
+
+<p>Read a line right to left and it says itself. <code>violations contains M if B</code> means:
+<em>when <code>B</code> holds, <code>M</code> is in <code>violations</code>.</em> Nothing is being
+appended, ordered or looped over — the rule is a standing claim about what belongs in a set.</p>
+
+<div class="callout">
+  <p class="callout-title">The sentence to put on the whiteboard</p>
+  <p>A <strong>complete rule</strong> answers <em>"what is the value?"</em> — so a second answer
+  is a contradiction.<br>
+  A <strong>partial set rule</strong> answers <em>"what belongs?"</em> — so a second answer is
+  just another member.</p>
+  <p>Same file, same syntax, same <code>if</code>. The only difference is whether the key holds
+  <em>an</em> answer or <em>the</em> answers.</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">Two <code>violation :=</code> complete rules both fire on the same input.
+  What happens?</p>
+  <ul class="quiz-options">
+    <li data-correct>Evaluation stops with a conflict</li>
+    <li>The document keeps both messages</li>
+    <li>The final rule quietly wins</li>
+    <li>The earliest rule quietly wins</li>
+  </ul>
+  <div class="quiz-explain">A complete rule's key can hold exactly one value, so two rules
+  claiming it is a contradiction and OPA errors out rather than choosing. That error is the signal
+  that you wanted <code>contains</code>.</div>
+</div>
+
+<h2>3 · Run it and read the set</h2>
+
+<p>A sixteen-year-old with no username breaks two of the three rules:</p>
+
+<figure>
+  <p class="code-label">input.json</p>
+<pre><code class="lang-json">{ "age": 16 }</code></pre>
+</figure>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d policy.rego -i input.json 'data.signup' --format pretty</code></pre>
+<pre><code class="lang-json">{
+  "violations": [
+    "age must be at least 18",
+    "username is required"
+  ]
+}</code></pre>
+<figcaption>Verified output, OPA 1.19.0.</figcaption>
+</figure>
+
+<p>Two rules fired and both contributed. The third — the empty-username check — did not, because
+the key is absent rather than empty. Every problem reported at once, which is exactly what the
+person fixing the config needs.</p>
+
+<p class="note">Sets have no JSON equivalent, so OPA serialises them as arrays on the way out.
+Inside Rego it is still a set: unordered, no duplicates. The square brackets in that output are a
+printing detail, not a promise about order.</p>
+
+<h2>4 · A clean input gives you an empty set, not nothing</h2>
+
+<p>Now fix both problems and re-run. Predict the output before you read on — the interesting part
+is not the values but whether the <em>key</em> is there.</p>
+
+<figure>
+  <p class="code-label">input.json</p>
+<pre><code class="lang-json">{ "age": 21, "username": "meleu" }</code></pre>
+</figure>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d policy.rego -i input.json 'data.signup' --format pretty</code></pre>
+<pre><code class="lang-json">{
+  "violations": []
+}</code></pre>
+<figcaption>Verified output. The key is <em>present</em>, holding an empty set.</figcaption>
+</figure>
+
+<p>This is the structural difference from lesson 1, and it is worth pausing on. When a complete
+rule's body failed, the key vanished — <code>{}</code>, undefined. When <em>every</em> partial set
+rule fails, the key is still there, holding nothing.</p>
+
+<div class="key-idea">
+  <p><strong>A partial set rule is always defined.</strong> Zero contributions is a perfectly good
+  answer to "what belongs?" — the answer is "nothing". So a passing policy does not produce
+  silence; it produces <code>[]</code>.</p>
+</div>
+
+<p>That property is what makes this shape usable by a pipeline. The caller never has to
+distinguish "no violations" from "the policy did not load" — it can simply count:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d policy.rego -i input.json 'count(data.signup.violations)' --format pretty</code></pre>
+<pre><code class="lang-json">0</code></pre>
+</figure>
+
+<p>Decision versus enforcement, again: Rego computed <code>0</code>. Deciding that
+<code>0</code> means "let the merge through" is the caller's job.</p>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">Every rule body fails for a clean input. What is
+  <code>data.signup.violations</code>?</p>
+  <ul class="quiz-options">
+    <li data-correct>an empty set, still present</li>
+    <li>undefined, so the key vanishes</li>
+    <li>the boolean false, always present</li>
+    <li>null, meaning nothing was added</li>
+  </ul>
+  <div class="quiz-explain">Zero contributions is a valid outcome for a set, so the key exists and
+  holds no members. This is what a <em>pass</em> looks like — and it is why callers can just count
+  the set instead of testing for undefined.</div>
+</div>
+
+<h2>5 · The set is a set: duplicates and order are gone</h2>
+
+<p>Two rules can legitimately produce the same message. Because the key holds a set, the second
+contribution is absorbed:</p>
+
+<figure>
+<pre><code class="lang-rego">package dup
+
+msgs contains "too young" if input.age &lt; 18
+
+msgs contains "too young" if input.age &lt; 13</code></pre>
+</figure>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d dup.rego -i input.json 'data.dup' --format pretty</code></pre>
+<pre><code class="lang-json">{
+  "msgs": [
+    "too young"
+  ]
+}</code></pre>
+<figcaption>Verified output with <code>{"age": 10}</code>. Both rules fired; one member.</figcaption>
+</figure>
+
+<p>Set semantics also mean rule order in the file is meaningless — you can reorder, split across
+files, or delete one rule without touching the others. That independence is the practical payoff:
+adding a new check is always <em>append a rule</em>, never <em>edit a function</em>.</p>
+
+<h2>6 · The trap: a rule that adds nothing looks exactly like a pass</h2>
+
+<p>Here is the failure mode that will bite your team. Feed the policy an input with no
+<code>age</code> key at all:</p>
+
+<figure>
+  <p class="code-label">input.json</p>
+<pre><code class="lang-json">{ "username": "meleu" }</code></pre>
+</figure>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d policy.rego -i input.json 'data.signup' --format pretty</code></pre>
+<pre><code class="lang-json">{
+  "violations": []
+}</code></pre>
+<figcaption>Verified output. A clean bill of health for an input with no age at all.</figcaption>
+</figure>
+
+<p>Nothing is broken; the policy did precisely what it was told. <code>input.age</code> is
+undefined, so the comparison is undefined, so the body does not hold, so the rule contributes
+nothing — and "contributes nothing" is indistinguishable from "found no problem". You can watch
+it happen directly:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d policy.rego -i input.json 'input.age &lt; 18' --format pretty</code></pre>
+<pre><code class="lang-shell">undefined</code></pre>
+</figure>
+
+<div class="callout warn">
+  <p class="callout-title">Flag this one for your coworkers</p>
+  <p>A missing key does not make a check fail — it makes the check <em>disappear</em>. This is
+  lesson 1's undefined arriving in its dangerous form: a policy that silently approves everything
+  it cannot see. Absent data must be its own rule, which is exactly why the example needs both
+  <code>not input.username</code> (key absent) and <code>input.username == ""</code> (key present
+  but empty). They are different bugs and neither one catches the other.</p>
+</div>
+
+<p>So the discipline is: <strong>for every field you check, decide what "missing" means</strong>.
+Sometimes absence is fine. When it is not, write the <code>not</code> rule too — as the username
+checks do.</p>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">The input has no <code>age</code> key. The age rule…</p>
+  <ul class="quiz-options">
+    <li data-correct>adds nothing, because the comparison is undefined</li>
+    <li>adds its message, because absent means zero</li>
+    <li>raises an error, because the key is missing</li>
+    <li>adds its message, because absent means false</li>
+  </ul>
+  <div class="quiz-explain">Referring to an absent key yields undefined, and an undefined
+  expression cannot satisfy a body — so the rule contributes no member. No error, no message: a
+  silent pass.</div>
+</div>
+
+<h2>7 · Where this is heading</h2>
+
+<p>You have just written the shape of every policy you will write at work. A real conftest policy
+is this file with a different name for the key and a work-shaped condition in the body:</p>
+
+<figure>
+<pre><code class="lang-rego">deny contains msg if {
+	input.kind == "Deployment"
+	not input.spec.template.spec.securityContext.runAsNonRoot
+	msg := "Deployment must set runAsNonRoot"
+}</code></pre>
+<figcaption>A preview, not today's material — the multi-line body and the message variable come in
+the next lessons.</figcaption>
+</figure>
+
+<p>The name <code>violations</code> was arbitrary; nothing in Rego cares. Conftest will later
+insist on <code>deny</code>, <code>violation</code> or <code>warn</code>, because a wrapper needs a
+convention to look for. That convention is all conftest adds here — the mechanism is the
+<code>contains</code> you just learned.</p>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">Which line adds one message to a set named <code>violations</code>?</p>
+  <ul class="quiz-options">
+    <li data-correct><code>violations contains "too young" if input.age &lt; 18</code></li>
+    <li><code>violations := "too young" if input.age &lt; 18</code></li>
+    <li><code>violations[_] == "too young" if input.age &lt; 18</code></li>
+    <li><code>contains violations "too young" if input.age &lt; 18</code></li>
+  </ul>
+  <div class="quiz-explain">The rule name comes first, then <code>contains</code>, then the member
+  it adds. The <code>:=</code> version is valid Rego but a <em>complete</em> rule — it sets the key
+  to that one string, and a second such rule would conflict.</div>
+</div>
+
+<div class="recall" data-recall="Answer from memory before revealing">
+  <p class="recall-q">A coworker asks: "why is our policy's output an empty list when everything
+  passes? Shouldn't it just say OK?" Answer them in two or three sentences.</p>
+  <div class="recall-answer">
+    <p>The policy's output is a <em>set of problems found</em>, built by rules that each add one
+    message when they have something to report. When nothing is wrong, no rule contributes, so the
+    set is empty — and empty is the answer, not the absence of one. The pipeline then just counts:
+    zero members means pass.</p>
+    <p>If your answer used the words "returns" or "checks", nudge it back toward "builds" and
+    "belongs". The rules are not running checks and reporting; they are describing what belongs in
+    a set.</p>
+  </div>
+</div>
+
+<h2>Terminal drill</h2>
+
+<p>Ten minutes. Steps 4 and 6 are the ones that matter — one shows you the empty set, the other
+shows you the silent pass.</p>
+
+<ol class="drill" data-drill="rego-0002">
+  <li>
+    <p>Fresh directory beside your lesson-1 work. Run this from the workspace root.</p>
+<pre><code class="lang-shell">mkdir -p exercises/002-partial-set-rules &amp;&amp; cd exercises/002-partial-set-rules</code></pre>
+  </li>
+  <li>
+    <p>First, meet the error on purpose. Write the two-complete-rules version and run it, so the
+    conflict message is one you have seen rather than one you have read about.</p>
+<pre><code class="lang-shell">cat &gt; conflict.rego &lt;&lt;'EOF'
+package conflict
+
+violation := "age must be at least 18" if input.age &lt; 18
+
+violation := "username is required" if not input.username
+EOF
+
+echo '{ "age": 16 }' &gt; input.json
+opa eval -d conflict.rego -i input.json 'data.conflict' --format pretty</code></pre>
+  </li>
+  <li>
+    <p>Now the working version. Type it rather than pasting — <code>contains</code> is the keyword
+    you want in your fingers.</p>
+<pre><code class="lang-shell">cat &gt; policy.rego &lt;&lt;'EOF'
+package signup
+
+violations contains "age must be at least 18" if input.age &lt; 18
+
+violations contains "username is required" if not input.username
+
+violations contains "username can't be empty" if input.username == ""
+EOF
+
+opa eval -d policy.rego -i input.json 'data.signup' --format pretty</code></pre>
+  </li>
+  <li>
+    <p><strong>The empty set.</strong> Make the input valid and re-run. Say out loud why the key
+    is still there, when lesson 1's <code>allow</code> key disappeared.</p>
+<pre><code class="lang-shell">echo '{ "age": 21, "username": "meleu" }' &gt; input.json
+opa eval -d policy.rego -i input.json 'data.signup' --format pretty
+opa eval -d policy.rego -i input.json 'count(data.signup.violations)' --format pretty</code></pre>
+  </li>
+  <li>
+    <p>Separate the two username rules. Predict which message you get for each input
+    <em>before</em> running it — that is the retrieval, not the typing.</p>
+<pre><code class="lang-shell">echo '{ "age": 21, "username": "" }' &gt; input.json
+opa eval -d policy.rego -i input.json 'data.signup.violations' --format pretty
+
+echo '{ "age": 21 }' &gt; input.json
+opa eval -d policy.rego -i input.json 'data.signup.violations' --format pretty</code></pre>
+  </li>
+  <li>
+    <p><strong>The silent pass.</strong> Drop the <code>age</code> key entirely and watch the
+    policy approve it. Then find the exact expression that went undefined.</p>
+<pre><code class="lang-shell">echo '{ "username": "meleu" }' &gt; input.json
+opa eval -d policy.rego -i input.json 'data.signup' --format pretty
+opa eval -d policy.rego -i input.json 'input.age &lt; 18' --format pretty</code></pre>
+  </li>
+  <li>
+    <p>Now fix it yourself — no snippet given. Add a fourth rule that reports a missing
+    <code>age</code>, then confirm the previous input no longer passes. (Ask me if it fights
+    back.)</p>
+  </li>
+  <li>
+    <p>Last, prove set semantics to yourself. Add a rule contributing a message another rule
+    already contributes, and count the members.</p>
+<pre><code class="lang-shell">opa eval --format pretty 'x := {"zebra", "apple", "apple", "mango"}'</code></pre>
+  </li>
+</ol>
+
+<div class="ask-teacher">
+  <strong>I am your teacher for this, not just the author of the page.</strong> Ask me anything in
+  the session: how a set differs from an array in Rego, what happens if you mix
+  <code>contains</code> and <code>:=</code> on the same key, why the multi-line body in the
+  conftest preview needs no <code>and</code>, or how to shape a message so the person reading your
+  pipeline output knows what to fix.
+</div>
+
+<footer class="colophon">
+
+  <h3>Read this next (primary source)</h3>
+  <p><a href="https://www.openpolicyagent.org/docs/policy-language">OPA Docs — Policy Language</a>,
+  the sections on <em>Complete Rules</em> and <em>Partial Rules</em>. Read them in that order; the
+  docs motivate partial rules exactly the way this lesson does, from the conflict error outwards.
+  Then paste today's policy into the <a href="https://play.openpolicyagent.org/">Rego
+  Playground</a> and edit the input there — it shows the whole document live as you type.</p>
+
+  <h3>Main takeaways</h3>
+  <ul>
+    <li>A <strong>complete rule</strong> (<code>:=</code>) holds one value; two of them firing at
+    once is a conflict error, not a merge.</li>
+    <li>A <strong>partial set rule</strong> (<code>contains</code>) collects members. Each
+    definition is <em>incremental</em> — additive, independent, order-free.</li>
+    <li>Read it as: <code>violations contains M if B</code> → <em>when B holds, M belongs to
+    violations</em>.</li>
+    <li>Complete rules answer <em>"what is the value?"</em>; partial set rules answer <em>"what
+    belongs?"</em></li>
+    <li>A partial set rule is <strong>always defined</strong>. Zero contributions gives
+    <code>[]</code> — that is what a pass looks like, and why callers can <code>count()</code>.</li>
+    <li>Sets deduplicate and have no order; OPA prints them as arrays because JSON has no
+    set type.</li>
+    <li><strong>A missing key makes a check disappear, not fail.</strong> If absence matters,
+    write a <code>not</code> rule for it.</li>
+  </ul>
+
+  <h3>Reference</h3>
+  <ul>
+    <li><a href="../reference/0001-glossary.html">Glossary of Rego terms</a> — see <em>partial /
+    multi-value rule</em>, <em>incremental</em>, and the <em>evaluation states</em> table for
+    undefined vs false vs empty set.</li>
+    <li><a href="../reference/0002-opa-cli-cheatsheet.html">OPA CLI cheat sheet</a> — the
+    <code>opa eval</code> flags used here.</li>
+  </ul>
+
+  <h3>Lessons</h3>
+  <ul>
+    <li><a href="0001-rego-builds-a-json-document.html">Lesson 1 — Rego Builds a JSON
+    Document</a></li>
+  </ul>
+
+  <h3>Sources</h3>
+  <ul>
+    <li id="src-1"><a href="https://www.openpolicyagent.org/docs/policy-language">OPA Docs —
+    Policy Language</a>: complete definitions "can only have one value at a time"; multiple values
+    for the same document return an error; incremental rule definitions are "additive".</li>
+    <li>All command output on this page was executed on this machine against OPA 1.19.0 and pasted
+    verbatim.</li>
+  </ul>
+
+  <h3>When you want a second opinion</h3>
+  <p>"How granular should my messages be?" and "one rule per check, or one rule with a big body?"
+  are taste questions the docs will not settle. Those belong in
+  <a href="https://github.com/orgs/open-policy-agent/discussions">OPA Community Discussions</a> or
+  the <code>#help</code> channel of <a href="https://slack.openpolicyagent.org/">OPA Slack</a>,
+  with a <a href="https://play.openpolicyagent.org/">Playground</a> link so people can run your
+  example.</p>
+
+</footer>
+
+</main>
+
+<script src="../../assets/syntax-highlight-rego.js"></script>
+<script src="../../assets/quiz-multiple-choice.js"></script>
+<script src="../../assets/recall-prompt.js"></script>
+<script src="../../assets/drill-checklist.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>
