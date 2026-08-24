@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rego &amp; Conftest · Course Index</title>
+<link rel="stylesheet" href="../assets/base.css">
+<style>
+  .toc { list-style: none; padding: 0; margin: 0 0 1.5rem; }
+  .toc li { margin: 0 0 1.4rem; }
+  .toc .num {
+    display: block;
+    font-family: var(--sans);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 0.15rem;
+  }
+  .toc .title { font-size: 1.15rem; }
+  .toc .blurb {
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    margin: 0.25rem 0 0;
+  }
+</style>
+</head>
+<body>
+<main class="sheet">
+
+<header class="masthead">
+  <p class="eyebrow">Rego &amp; Conftest</p>
+  <h1>Course Index</h1>
+  <p class="standfirst">Everything written so far, in reading order. Lessons build on each other;
+  the references are written to be jumped into cold and kept open in a second tab.</p>
+</header>
+
+<div class="key-idea">
+  <p>The whole course hangs off one sentence: <strong>a <code>.rego</code> file is a set of rules
+  that build a JSON document from input data.</strong> Every lesson below is that sentence getting
+  more precise.</p>
+</div>
+
+<h2>Lessons</h2>
+
+<ul class="toc">
+  <li>
+    <span class="num">Lesson 1</span>
+    <a class="title" href="lessons/0001-rego-builds-a-json-document.html">Rego Builds a JSON Document</a>
+    <p class="blurb">Why Rego exists, what "decoupled policy" actually buys you, and the
+    <code>opa eval</code> command that lets you watch the document get built.</p>
+  </li>
+  <li>
+    <span class="num">Lesson 2</span>
+    <a class="title" href="lessons/0002-many-rules-one-set.html">Many Rules, One Set</a>
+    <p class="blurb">Why two rules of the same name conflict, and how <code>contains</code> turns a
+    pile of independent checks into one collected set of messages — the shape every real policy has.</p>
+  </li>
+  <li>
+    <span class="num">Lesson 3</span>
+    <a class="title" href="lessons/0003-the-conftest-contract.html">The Conftest Contract</a>
+    <p class="blurb">Conftest adds no new language — only four conventions: where the policy lives,
+    what package it declares, what the rule is called, and what it produces.</p>
+  </li>
+</ul>
+
+<h2>Reference</h2>
+
+<ul class="toc">
+  <li>
+    <span class="num">Reference 1</span>
+    <a class="title" href="reference/0001-glossary.html">Glossary</a>
+    <p class="blurb">The vocabulary, defined once and used consistently everywhere else. Terms
+    marked <strong>†</strong> are the ones people routinely get wrong.</p>
+  </li>
+  <li>
+    <span class="num">Reference 2</span>
+    <a class="title" href="reference/0002-opa-cli-cheatsheet.html">OPA CLI Cheat Sheet</a>
+    <p class="blurb">The <code>opa</code> commands worth keeping at hand — <code>eval</code> flags,
+    the debugging loop, and the exit-code shapes for scripts.</p>
+  </li>
+  <li>
+    <span class="num">Reference 3</span>
+    <a class="title" href="reference/0003-conftest-cheatsheet.html">Conftest Cheat Sheet</a>
+    <p class="blurb">The contract, the flags, the exit codes, and <code>conftest parse</code> — the
+    one command that makes an unfamiliar config format tractable.</p>
+  </li>
+</ul>
+
+<h2>Working files</h2>
+
+<p>Not lessons — the scaffolding around them, in Markdown.</p>
+
+<ul>
+  <li><a href="MISSION.md">MISSION.md</a> — why this course exists, what success looks like, what
+  is out of scope.</li>
+  <li><a href="NOTES.md">NOTES.md</a> — running notes taken during the sessions.</li>
+  <li><a href="RESOURCES.md">RESOURCES.md</a> — upstream docs and links worth returning to.</li>
+  <li><a href="exercises/">exercises/</a> — the <code>.rego</code> and <code>input.json</code>
+  files written while working through each lesson.</li>
+</ul>
+
+<footer class="colophon">
+  <p>Rego v1 syntax throughout (<code>if</code> and <code>contains</code> required). Command output
+  in these pages was run locally against OPA 1.19.0 and pasted verbatim.</p>
+  <div class="ask-teacher">
+    <strong>Ready for the next lesson?</strong> Say so in the session and this index gets a new
+    row.
+  </div>
+</footer>
+
+</main>
+</body>
+</html>
