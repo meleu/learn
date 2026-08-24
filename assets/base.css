@@ -302,3 +302,20 @@ td code { font-size: 0.82em; }
   .no-print { display: none !important; }
   .note.margin { position: static; width: auto; margin-left: 0; border-left: 2px solid var(--rule); padding-left: 0.9rem; }
 }
+
+/* ---- Crumb: the link back up to the course index ---- */
+
+.crumb {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0 0 2rem;
+}
+.crumb a { color: inherit; border-bottom-color: var(--rule); }
+.crumb a:hover { color: var(--accent); }
+.colophon .crumb { margin: 2rem 0 0; }
+
+@media print { .crumb { display: none; } }
