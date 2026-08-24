@@ -16,6 +16,10 @@ project itself or a talk by a maintainer.
   iteration, safety. Use for: any question about what a piece of syntax actually means.
 - [OPA Docs: Policy Reference](https://www.openpolicyagent.org/docs/policy-reference)
   Built-in function catalogue and the formal grammar. Use for: "is there a built-in for X?"
+- [OPA Docs: Policy Testing](https://www.openpolicyagent.org/docs/policy-testing)
+  The `test_` rule convention, `with input as`, mocking `data`, coverage. Written entirely in
+  `opa test` terms — but `conftest verify` is that same runner, so every example transfers
+  verbatim (verified locally, session 3). Use for: backlog item 6.
 - [Conftest documentation](https://www.conftest.dev/)
   Install, the `deny`/`warn` rule contract, exceptions, `--combine`, CI examples.
   Use for: anything about how conftest wraps OPA.

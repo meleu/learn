@@ -44,7 +44,13 @@ conftest, so items 3–5 below were deferred past the wrapper.
    lesson. Start there. `msg :=` inside a body is the other half.
 5. Iteration: `some ... in`, `[_]`, and why "for loop" is the wrong intuition. Containers are the
    natural example now that Kubernetes is on the page (`input.spec.template.spec.containers`).
-6. Testing policies with `opa test` — policies need tests too.
+6. Testing policies with **`conftest verify`** — policies need tests too. The user asked (session 3)
+   to skip `opa test` and go straight to the wrapper; verified sound, since `conftest verify` *is*
+   OPA's test runner and the skill (`test_` rules + `with input as`) is identical. Keep `opa test`
+   as a one-line footnote: it is what OPA's policy-testing docs are written in, and it alone has
+   `--coverage --threshold`. Hook for the lesson: the runtime `eval_conflict_error` from LR-0005 —
+   a bug that passes `opa check` and only fires on a particular input is exactly what a unit test
+   is for.
 7. Conftest, part two: `--combine`, `exception` rules, `--data` for exception lists, and rule
    suffixes as the thing exceptions key off.
 8. Non-Kubernetes parsers: Dockerfile, XML (`pom.xml`), `.gitlab-ci.yml`.
@@ -121,6 +127,16 @@ Everything below was run on this machine and is already baked into lesson 3 / re
   jsonnet, nginx, properties, spdx, textproto, toml, vcl, xml, yaml.
 - `conftest parse FILE` prints the JSON a policy will see. The command that makes any new format
   tractable.
+- **`conftest verify` runs Rego unit tests** — same engine and same results as `opa test` (verified
+  side by side, session 3: identical tests found). Differences that matter: it exits **1** on a
+  failing test where `opa test` exits **2**; it takes conftest's `-o`/`-n`/`--data` flags; it has
+  `--report {full|notes|fails}`, `--trace` and `--var-values` in place of `--explain`; it has **no**
+  coverage or benchmark flags.
+- **`conftest verify`'s help text is wrong about filenames.** It says files need a `_test` postfix;
+  in fact a `test_`-prefixed rule in an ordinary `extra.rego` was executed. `_test.rego` is a
+  convention, not a filter — a stray `test_` rule anywhere under `-p` will run in CI.
+- **`conftest verify` repeats the `0 tests` silent pass**: a policy dir with no test rules prints
+  `0 tests, 0 passed` and exits 0. Same guard, second location — good interleaving with LR-0006.
 - **`--all-namespaces`** queries every package found, so a non-`main` package runs normally. It
   cures a wrong *package* name only: a policy dir whose rules are named something other than
   `deny`/`violation`/`warn` still prints `0 tests, 0 passed` and exits 0 under it. Verified
