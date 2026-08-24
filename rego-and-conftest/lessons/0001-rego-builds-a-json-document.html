@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 1 · Rego Builds a JSON Document</title>
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" href="../../assets/flow-boxes.css">
+</head>
+<body>
+<main class="sheet">
+
+<header class="masthead">
+  <p class="eyebrow">Rego &amp; Conftest · Lesson 1</p>
+  <h1>Rego Builds a JSON Document</h1>
+  <p class="standfirst">You already had the right instinct. This lesson makes it precise, gives it
+  the official vocabulary, and hands you the one command that lets you watch it happen.</p>
+</header>
+
+<div class="callout good">
+  <p class="callout-title">Your win for this lesson</p>
+  <p>By the end you can explain to a coworker <em>why</em> Rego exists, describe a
+  <code>.rego</code> file as <em>rules that build a JSON document from input data</em>, and run a
+  policy locally with <code>opa eval</code> to read the document it produced.</p>
+</div>
+
+<p>You wrote this in your old notes:</p>
+
+<blockquote class="callout">
+  <p class="callout-title">Your prior model</p>
+  <p>Rego is a language to build JSON documents. A <code>.rego</code> file has rules that build a
+  JSON document based on input data (also JSON).</p>
+</blockquote>
+
+<p>That is not a simplification you should outgrow. It is the model the OPA authors designed
+around, and everything else in this course hangs off it. What it is missing is only its
+vocabulary and its proof — the command that shows you the document.</p>
+
+<h2>1 · Why Rego exists at all</h2>
+
+<p>Every system already makes policy decisions: <em>is this user an adult? can they delete that
+resource? does this image come from a trusted registry?</em> The old way is to bury those
+decisions inside each application — scattered across repos, inconsistent, and impossible to
+change without a redeploy.</p>
+
+<p>OPA's founding claim is that this is backwards. Policy should be <strong>decoupled</strong>
+from the software that enforces it: <a href="https://www.openpolicyagent.org/docs/philosophy">
+"specified declaratively, updated at any time without recompiling or redeploying, and enforced
+automatically."</a><a href="#src-1">¹</a> The people who own the rule should be able to read,
+write, version and audit it without touching the system that obeys it.</p>
+
+<div class="key-idea">
+  <p><strong>Decision versus enforcement.</strong> Rego <em>decides</em> ("this is not allowed").
+  The calling system <em>enforces</em> ("so I will reject it"). Rego never blocks, deletes or
+  deploys anything itself — it only ever computes a value.</p>
+</div>
+
+<p class="note margin">This is the framing to lead with when you brief your team. Not "we're
+adding a linter" but "we're moving rules out of people's heads and out of scattered scripts,
+into one place you can read, version and test."</p>
+
+<p>That decoupling only works if the engine is <em>domain-agnostic</em> — it cannot know what a
+Deployment or a <code>pom.xml</code> is. So OPA reduces every domain to the one shape they all
+share: <strong>structured data in, structured data out</strong>. Rego is a language for reasoning
+about that data. Not about Kubernetes. About JSON.</p>
+
+<h2>2 · What a <code>.rego</code> file actually is</h2>
+
+<p>Here is the thing most newcomers get wrong. A <code>.rego</code> file is <strong>not</strong> a
+script that runs top to bottom doing things. It is a set of declarative rules that
+<strong>build a JSON document</strong>. You hand OPA some JSON; it evaluates your rules; it hands
+a JSON document back.</p>
+
+<div class="flow">
+  <div class="box">
+    <div class="t"><code>input</code></div>
+    <div class="d">the JSON you are asking about<br><code>{"age": 21}</code></div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="box policy">
+    <div class="t">rules</div>
+    <div class="d">your <code>.rego</code> definitions</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="box">
+    <div class="t">a JSON document</div>
+    <div class="d">what the rules built<br><code>{"allow": true}</code></div>
+  </div>
+</div>
+
+<p>The docs say it in exactly these terms: rules
+<a href="https://www.openpolicyagent.org/docs/policy-language">"define the content of virtual
+documents… When OPA evaluates a rule, OPA <em>generates</em> the content of the document that is
+defined by the rule."</a><a href="#src-2">²</a> A "decision" is not a special kind of thing. It is
+just a value sitting somewhere in the JSON document your rules built.</p>
+
+<p>Everything OPA knows lives in one JSON tree. Two roots matter today:</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Root</th><th>What lives there</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>input</code></td>
+      <td>The data for <em>this</em> question, handed in by the caller at query time. Exactly one
+      per evaluation.</td>
+    </tr>
+    <tr>
+      <td><code>data</code></td>
+      <td>Everything else: context you pre-load (a legal minimum age, a list of approved
+      registries) <em>plus</em> the documents your rules generate. Your policy's output lives
+      here.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>Here is a whole policy — an age check. Do not read it as a procedure. Read it as a description
+of what the output document should contain:</p>
+
+<figure>
+  <p class="code-label">policy.rego</p>
+<pre><code class="lang-rego">package example
+
+# put allow: true in the document when the applicant is an adult
+allow if input.age >= 18</code></pre>
+</figure>
+
+<p>With an <code>input</code> of <code>{"age": 21}</code>, the tree your rule built looks like
+this:</p>
+
+<figure>
+<pre><code>data
+└─ example
+   └─ allow: true      ← the value your rule generated</code></pre>
+</figure>
+
+<p>Notice what is <em>absent</em>: no loop, no <code>else</code> ladder, no <code>return</code>.
+You describe what belongs in the document; OPA does the searching to build it. The package name
+<code>example</code> is simply the folder in the tree your rules write into.</p>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">A Rego policy decides a request is not allowed. What happens to the request?</p>
+  <ul class="quiz-options">
+    <li data-correct>Nothing, until a caller enforces it</li>
+    <li>Rego blocks it inside the engine</li>
+    <li>Rego reverses it and restores state</li>
+    <li>Rego returns it to the sender</li>
+  </ul>
+  <div class="quiz-explain">Rego computes a verdict from the data it is given. Acting on that
+  verdict — rejecting the request, failing the pipeline — is the caller's job. This separation is
+  the whole point of OPA.</div>
+</div>
+
+<h2>3 · Run it, and read the document</h2>
+
+<p>Every value a rule builds is addressable by its path in the tree:
+<code>data.&lt;package&gt;.&lt;rule&gt;</code> — here, <code>data.example.allow</code>. That path
+is how you <em>ask</em> OPA for a piece of the document.</p>
+
+<figure>
+  <p class="code-label">input.json</p>
+<pre><code class="lang-json">{ "age": 21 }</code></pre>
+</figure>
+
+<p>First ask for the whole document the package built:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d policy.rego -i input.json 'data.example' --format pretty</code></pre>
+<pre><code class="lang-json">{
+  "allow": true
+}</code></pre>
+<figcaption>Verified output, OPA 1.19.0.</figcaption>
+</figure>
+
+<p>That is the mental model made literal: the file <em>is</em> the JSON document it defines. Now
+ask for a single node — the decision itself:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d policy.rego -i input.json 'data.example.allow' --format pretty</code></pre>
+<pre><code class="lang-json">true</code></pre>
+</figure>
+
+<p><strong>Edit the input, re-run, read the document.</strong> That loop is how you will learn
+Rego, and it is the only workflow you need for the next few lessons.</p>
+
+<h2>4 · The one subtlety: undefined is a <em>missing key</em></h2>
+
+<p>Change <code>age</code> to <code>16</code> and ask for the whole document again. Predict the
+answer before you read on.</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d policy.rego -i input.json 'data.example' --format pretty</code></pre>
+<pre><code class="lang-json">{}</code></pre>
+<figcaption>Verified output. Not <code>{"allow": false}</code>. Not an error.</figcaption>
+</figure>
+
+<p>An <strong>empty document</strong>. The body <code>input.age &gt;= 18</code> could not be
+satisfied, so the rule contributed nothing at all — the <code>allow</code> key simply is not
+there. Rego calls this state <strong>undefined</strong>, and structurally it means exactly
+<em>"this key is absent from the document."</em></p>
+
+<p>Ask for the node directly and OPA says so to your face:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d policy.rego -i input.json 'data.example.allow' --format pretty</code></pre>
+<pre><code class="lang-shell">undefined</code></pre>
+</figure>
+
+<div class="callout warn">
+  <p class="callout-title">Flag this one for your coworkers</p>
+  <p>Undefined is <strong>not</strong> <code>false</code>, and not <code>null</code>. Those are
+  real values that <em>are</em> in the document. Undefined is the absence of a key. Anyone
+  arriving from Python or Go will assume a failed condition yields <code>false</code>; in Rego it
+  yields nothing at all. This is the single most common source of a policy that quietly does
+  nothing.</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">For <code>{"age": 16}</code>, with only the <code>allow if</code> rule above,
+  the <code>allow</code> key is…</p>
+  <ul class="quiz-options">
+    <li data-correct>absent — the rule added nothing</li>
+    <li>present, holding the value false</li>
+    <li>present, holding the value null</li>
+    <li>present, holding an empty object</li>
+  </ul>
+  <div class="quiz-explain">An unsatisfied body contributes no value, so the key never appears.
+  That is why the whole document came back as <code>{}</code>. Absence, not falsity.</div>
+</div>
+
+<h2>5 · Guaranteeing the key with <code>default</code></h2>
+
+<p>An empty document is rarely what a caller wants. Asking "am I allowed?" and getting
+<em>nothing</em> back is awkward to handle. The fix is one line:</p>
+
+<figure>
+  <p class="code-label">policy.rego</p>
+<pre><code class="lang-rego">package example
+
+# fall back to false unless a rule below proves otherwise
+default allow := false
+
+allow if input.age >= 18</code></pre>
+</figure>
+
+<p>Re-run with <code>age</code> still at <code>16</code>. Now the document holds a real, present
+<code>false</code>:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d policy.rego -i input.json 'data.example' --format pretty</code></pre>
+<pre><code class="lang-json">{
+  "allow": false
+}</code></pre>
+<figcaption>Verified output.</figcaption>
+</figure>
+
+<p><code>default</code> supplies a value for when no other definition of that rule fires. Being a
+constant rather than a conditional, it needs no <code>if</code>. The key is now always present,
+and callers never have to reason about undefined.</p>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">What does adding <code>default allow := false</code> change for
+  <code>{"age": 21}</code>?</p>
+  <ul class="quiz-options">
+    <li data-correct>Nothing — the rule still fires</li>
+    <li>The document now holds false</li>
+    <li>The two values are both kept</li>
+    <li>Evaluation fails with a conflict</li>
+  </ul>
+  <div class="quiz-explain">A default is only consulted when every other definition of the rule is
+  undefined. At 21 the body is satisfied, so <code>allow</code> is <code>true</code> and the
+  default is never reached.</div>
+</div>
+
+<div class="callout">
+  <p class="callout-title">Two honest asterisks on "it is all JSON"</p>
+  <p><strong>(1)</strong> It is the JSON data <em>model</em>, not literal JSON text. Your input
+  need not be a <code>.json</code> file — later, other tools will parse YAML, Dockerfiles and XML
+  into the same tree. Rego also adds one type JSON lacks: <strong>sets</strong>, which you will
+  build in the next lesson and which OPA serialises to arrays on output.</p>
+  <p><strong>(2)</strong> <code>undefined</code> is the one thing that is <em>not</em> a value —
+  it is the absence of a key, as you just saw. Everything else OPA produces is ordinary JSON.</p>
+</div>
+
+<h2>6 · The tools, for now</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Tool</th><th>What it is for</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>opa</code></td>
+      <td>The engine, and your only tool for the next few lessons. <code>opa eval</code>
+      evaluates any path in the document; <code>opa fmt</code> formats to current syntax;
+      <code>opa test</code> unit-tests policies.</td>
+    </tr>
+    <tr>
+      <td><a href="https://play.openpolicyagent.org/">Rego Playground</a></td>
+      <td>Browser REPL. Paste policy and input, see the document instantly. Nothing to install,
+      and the fastest way to share a snippet with a coworker or with a forum.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>You already have <code>opa</code> installed, at version 1.19.0. Confirm with
+<code>opa version</code>.</p>
+
+<div class="note">
+  <p><strong>Where conftest fits — later.</strong> <a href="https://www.conftest.dev/">Conftest</a>
+  is a thin wrapper that runs OPA for you: it parses config files into <code>input</code> and
+  applies a naming convention on top. It is your eventual pipeline tool, and it is <em>just OPA
+  underneath</em>. We are deliberately leaving it alone until the Rego fundamentals are solid —
+  learning the wrapper before the engine is exactly how people end up copy-pasting policies they
+  cannot debug.</p>
+</div>
+
+<div class="callout warn">
+  <p class="callout-title">Syntax note — you are on Rego v1</p>
+  <p>Since OPA 1.0, <code>if</code> before a rule body is required syntax (constants like
+  <code>default allow := false</code> need none).<a href="#src-3">³</a> A great deal of pre-2024
+  material online omits it. When a snippet from a blog fails, suspect its age before you suspect
+  yourself — the error is unmistakable:</p>
+<pre><code class="lang-shell">rego_parse_error: `if` keyword is required before rule body</code></pre>
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">Which command prints the whole JSON document that <code>policy.rego</code>
+  builds?</p>
+  <ul class="quiz-options">
+    <li data-correct><code>opa eval -d policy.rego -i input.json 'data.example'</code></li>
+    <li><code>opa check policy.rego --with input.json 'example'</code></li>
+    <li><code>opa run policy.rego --input input.json 'example'</code></li>
+    <li><code>opa test policy.rego --input input.json 'example'</code></li>
+  </ul>
+  <div class="quiz-explain"><code>opa eval</code> evaluates a path. <code>-d</code> loads the
+  policy, <code>-i</code> supplies <code>input</code>, and the query <code>data.example</code> is
+  the node your package writes into — so OPA prints the document it built there.</div>
+</div>
+
+<div class="recall" data-recall="Answer from memory before revealing">
+  <p class="recall-q">In one sentence each: what does a <code>.rego</code> file do, and what does
+  <code>opa</code> do with it?</p>
+  <div class="recall-answer">
+    <p>A <code>.rego</code> file is a set of rules that build a JSON document out of input data.
+    <code>opa</code> loads those rules, feeds them an input, evaluates the document, and lets you
+    query any path within it.</p>
+    <p>If your sentences said "checks" or "validates", nudge them toward "builds". Validation is
+    something a <em>caller</em> does with the document afterwards — decision versus enforcement.</p>
+  </div>
+</div>
+
+<h2>Terminal drill</h2>
+
+<p>Ten minutes, <code>opa</code> only. The point is not the typing — it is steps 4 and 5, where
+you watch a key disappear and then come back.</p>
+
+<ol class="drill" data-drill="rego-0001">
+  <li>
+    <p>Make a scratch directory beside your other exercises, and confirm your version is 1.0 or later. (Run this from the workspace root; it will not touch anything you already have in <code>exercises/</code>.)</p>
+<pre><code class="lang-shell">mkdir -p exercises/001-mental-model &amp;&amp; cd exercises/001-mental-model
+opa version</code></pre>
+  </li>
+  <li>
+    <p>Write the policy and the input. Type them rather than pasting — the muscle memory for
+    <code>if</code> is worth twenty seconds.</p>
+<pre><code class="lang-shell">cat &gt; policy.rego &lt;&lt;'EOF'
+package example
+
+allow if input.age &gt;= 18
+EOF
+
+echo '{ "age": 21 }' &gt; input.json</code></pre>
+  </li>
+  <li>
+    <p>Print the whole document, then one node of it. Notice that the first is an object and the
+    second is a bare value.</p>
+<pre><code class="lang-shell">opa eval -d policy.rego -i input.json 'data.example' --format pretty
+opa eval -d policy.rego -i input.json 'data.example.allow' --format pretty</code></pre>
+  </li>
+  <li>
+    <p><strong>The one that matters.</strong> Set the age to 16 and print the document again. Say
+    out loud what happened to the key, and why it is not <code>false</code>.</p>
+<pre><code class="lang-shell">echo '{ "age": 16 }' &gt; input.json
+opa eval -d policy.rego -i input.json 'data.example' --format pretty
+opa eval -d policy.rego -i input.json 'data.example.allow' --format pretty</code></pre>
+  </li>
+  <li>
+    <p>Add the default line to <code>policy.rego</code>, keeping the age at 16, and re-run. The
+    key is back — now holding a real value.</p>
+<pre><code class="lang-shell">cat &gt; policy.rego &lt;&lt;'EOF'
+package example
+
+default allow := false
+
+allow if input.age &gt;= 18
+EOF
+
+opa eval -d policy.rego -i input.json 'data.example' --format pretty</code></pre>
+  </li>
+  <li>
+    <p>Now query one level higher — the root of the tree — and see where your package sits inside
+    it. Predict the shape before you run it.</p>
+<pre><code class="lang-shell">opa eval -d policy.rego -i input.json 'data' --format pretty</code></pre>
+  </li>
+  <li>
+    <p>Finally, break it on purpose. Write the rule the way a 2022 blog post would, with no
+    <code>if</code>, and read the error carefully — you will meet it again.</p>
+<pre><code class="lang-shell">printf 'package example\n\nallow {\n\tinput.age &gt;= 18\n}\n' &gt; old.rego
+opa eval -d old.rego -i input.json 'data.example' --format pretty</code></pre>
+  </li>
+</ol>
+
+<div class="ask-teacher">
+  <strong>I am your teacher for this, not just the author of the page.</strong> Ask me anything in
+  the session: why <code>data</code> holds both your loaded context and your rule output, what
+  happens when two rules write the same key, how a set differs from a JSON array, or how this
+  document model eventually turns into a pass or fail in your pipeline.
+</div>
+
+<footer class="colophon">
+
+  <h3>Read this next (primary source)</h3>
+  <p><a href="https://www.openpolicyagent.org/docs/philosophy">OPA Docs — Philosophy</a>. Short,
+  authoritative, and the clearest statement of the <em>why</em>. Then skim the top of the
+  <a href="https://www.openpolicyagent.org/docs/policy-language">Policy Language</a> reference,
+  where the "rules define the content of virtual documents" vocabulary comes from.</p>
+
+  <h3>Main takeaways</h3>
+  <ul>
+    <li><strong>Policy decoupling</strong> is the reason Rego exists: pull decisions out of
+    application code into a versioned, testable engine.</li>
+    <li><strong>Decision versus enforcement.</strong> Rego computes a verdict; the caller acts on
+    it. Rego never blocks, deletes or deploys.</li>
+    <li>A <code>.rego</code> file is not a script — it is <strong>rules that build a JSON
+    document</strong> from <code>input</code>.</li>
+    <li>Everything lives in one tree: <code>input</code> (this question's data) and
+    <code>data</code> (loaded context <em>plus</em> what your rules generate).</li>
+    <li><strong>Undefined is a missing key.</strong> An unsatisfied body adds nothing, so the key
+    is absent — not <code>false</code>, not <code>null</code>.</li>
+    <li><code>default</code> supplies a fallback so the key is always present.</li>
+    <li>The core loop: <strong>edit input → re-run → read the document.</strong></li>
+  </ul>
+
+  <h3>Reference</h3>
+  <ul>
+    <li><a href="../reference/0001-glossary.html">Glossary of Rego terms</a> — the words, defined
+    once, used consistently from here on.</li>
+    <li><a href="../reference/0002-opa-cli-cheatsheet.html">OPA CLI cheat sheet</a> — the commands
+    from this lesson, plus the ones you will want next.</li>
+  </ul>
+
+  <h3>Sources</h3>
+  <ul>
+    <li id="src-1"><a href="https://www.openpolicyagent.org/docs/philosophy">OPA Docs —
+    Philosophy</a>: policy decoupling; the decision/enforcement split; base vs virtual
+    documents.</li>
+    <li id="src-2"><a href="https://www.openpolicyagent.org/docs/policy-language">OPA Docs —
+    Policy Language</a>: rules define the content of virtual documents.</li>
+    <li id="src-3"><a href="https://www.openpolicyagent.org/docs/v0-upgrade">OPA Docs — v0 to v1
+    upgrade guide</a>: <code>if</code> became mandatory before rule bodies in Rego v1.</li>
+    <li>All command output on this page was executed on this machine against OPA 1.19.0 and
+    pasted verbatim.</li>
+  </ul>
+
+  <h3>When you want a second opinion</h3>
+  <p>Questions of taste — "is this the idiomatic way to model this?" — are not answered by docs.
+  Take those to <a href="https://github.com/orgs/open-policy-agent/discussions">OPA Community
+  Discussions</a> or the <code>#help</code> channel in
+  <a href="https://slack.openpolicyagent.org/">OPA Slack</a>, where maintainers answer. The local
+  convention is to include a <a href="https://play.openpolicyagent.org/">Rego Playground</a> link
+  with your question so people can run it.</p>
+
+</footer>
+
+</main>
+
+<script src="../../assets/syntax-highlight-rego.js"></script>
+<script src="../../assets/quiz-multiple-choice.js"></script>
+<script src="../../assets/recall-prompt.js"></script>
+<script src="../../assets/drill-checklist.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>

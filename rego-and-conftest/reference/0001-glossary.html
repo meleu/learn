@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · Rego Glossary</title>
+<link rel="stylesheet" href="../../assets/base.css">
+</head>
+<body>
+<main class="sheet">
+
+<header class="masthead">
+  <p class="eyebrow">Rego &amp; Conftest · Reference 1</p>
+  <h1>Glossary</h1>
+  <p class="standfirst">The vocabulary, defined once. These are the words used consistently
+  across every lesson — and the words to use when you explain this to someone else. It grows as the course does; conftest's own vocabulary joins it once we get there.</p>
+</header>
+
+<p class="note">Terms marked <strong>†</strong> are ones people routinely get wrong. If you are
+preparing a session for coworkers, budget extra time for those.</p>
+
+<h2>The document model</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Term</th><th>Meaning</th><th>In practice</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Document</strong></td>
+      <td>A JSON value. Everything in Rego — input, output, intermediate results — is one.</td>
+      <td>The unit of everything. "Rego builds documents" is the whole model.</td>
+    </tr>
+    <tr>
+      <td><strong>Base document</strong></td>
+      <td>Data that arrives from outside OPA: your config file, or data files loaded from disk.</td>
+      <td>Your parsed <code>deployment.yaml</code>, or a JSON file of allowed base images.</td>
+    </tr>
+    <tr>
+      <td><strong>Virtual document</strong></td>
+      <td>Data <em>computed</em> by rules. Does not exist until evaluation runs.</td>
+      <td>Every key your <code>.rego</code> file produces, including <code>deny</code>.</td>
+    </tr>
+    <tr>
+      <td><code>input</code> †</td>
+      <td>The global holding the document currently being evaluated. Exactly one per evaluation.</td>
+      <td>The JSON you are asking about, e.g. <code>{"age": 21}</code>.</td>
+    </tr>
+    <tr>
+      <td><code>data</code> †</td>
+      <td>The global root under which <em>everything else</em> lives — loaded data files
+      <em>and</em> all rule output, addressed identically.</td>
+      <td><code>opa eval 'data'</code> prints the whole thing. Your best debugging tool.</td>
+    </tr>
+    <tr>
+      <td><strong>Query</strong></td>
+      <td>An expression you ask OPA to evaluate against the document.</td>
+      <td><code>data.example.allow</code> asks for one rule's output.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout">
+  <p class="callout-title">The distinction to hammer</p>
+  <p><code>input</code> goes <em>in</em>; <code>data</code> comes <em>out</em> (and also holds
+  static reference data going in). A rule that reads <code>data.main.deny</code> when it meant
+  <code>input.spec</code> is the most common beginner mix-up.</p>
+</div>
+
+<h2>Rule anatomy</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Term</th><th>Meaning</th><th>Looks like</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Package</strong></td>
+      <td>The namespace a file's rules are built under. Determines the address of the output.</td>
+      <td><code>package main</code> → output at <code>data.main.*</code></td>
+    </tr>
+    <tr>
+      <td><strong>Rule</strong></td>
+      <td>An instruction for building one key in the document.</td>
+      <td><code>allow if input.user == "admin"</code></td>
+    </tr>
+    <tr>
+      <td><strong>Rule body</strong></td>
+      <td>The expressions inside <code>{ … }</code>. <em>All</em> must hold — it is an AND.</td>
+      <td>Two lines in a body means both conditions.</td>
+    </tr>
+    <tr>
+      <td><strong>Complete rule</strong> †</td>
+      <td>Assigns a <em>single</em> value to its key. If the body fails, the key is undefined.</td>
+      <td><code>replicas := input.spec.replicas</code></td>
+    </tr>
+    <tr>
+      <td><strong>Partial / multi-value rule</strong> †</td>
+      <td>Contributes members to a <em>set</em>. Many bodies may contribute; zero contributions
+      is a valid empty set.</td>
+      <td><code>deny contains msg if { … }</code></td>
+    </tr>
+    <tr>
+      <td><strong>Default rule</strong></td>
+      <td>A fallback value used when every other definition of that rule is undefined.</td>
+      <td><code>default allow := false</code></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Evaluation states</h2>
+
+<div class="key-idea">
+  <p><strong>Undefined is not false, and false is not empty.</strong> Three distinct states, and
+  conflating them is the number-one source of policies that silently pass.</p>
+</div>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>State</th><th>What it means</th><th>In the document</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Undefined</strong> †</td>
+      <td>A rule body did not hold, so the rule produced no value at all.</td>
+      <td>The key is <em>absent</em>. <code>opa eval</code> on it prints
+      <code>undefined</code>.</td>
+    </tr>
+    <tr>
+      <td><strong><code>false</code></strong></td>
+      <td>A rule successfully produced the boolean false — usually via <code>default</code>.</td>
+      <td><code>"allow": false</code> — the key exists.</td>
+    </tr>
+    <tr>
+      <td><strong>Empty set</strong></td>
+      <td>A multi-value rule ran and nothing contributed.</td>
+      <td><code>"deny": []</code> — the key exists, and this is what a <em>pass</em> looks
+      like.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Language mechanics</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>:=</code></td><td>Assignment. Binds a new local variable; re-binding the same name in one scope is an error.</td></tr>
+    <tr><td><code>==</code></td><td>Comparison. Both sides must already be known.</td></tr>
+    <tr><td><code>=</code> †</td><td>Unification: assign-or-compare, whichever the situation calls for. Prefer <code>:=</code> and <code>==</code> until you know why you want this.</td></tr>
+    <tr><td><strong>Unification</strong></td><td>Solving for whatever bindings make both sides equal. The engine's core operation.</td></tr>
+    <tr><td><code>some</code></td><td>Declares a variable as free, to be searched over. <code>some x in arr</code>.</td></tr>
+    <tr><td><code>every</code></td><td>Asserts a condition holds for all members of a collection.</td></tr>
+    <tr><td><code>_</code></td><td>Anonymous iteration variable. <code>arr[_]</code> means "any element of arr".</td></tr>
+    <tr><td><strong>Safety</strong></td><td>A compile-time guarantee: every variable must be bound by a non-negated expression somewhere. This is why <code>not</code> on an unbound variable is a compile error, not a runtime surprise.</td></tr>
+    <tr><td><strong>Rego v1</strong> †</td><td>The current language version (OPA ≥ 1.0). <code>if</code> and <code>contains</code> are mandatory. Pre-2024 examples on the web are mostly v0 and will not parse.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<footer class="colophon">
+  <h3>Sources</h3>
+  <ul>
+    <li><a href="https://www.openpolicyagent.org/docs/philosophy">OPA Docs — Philosophy</a>
+    (base/virtual documents, the unified <code>data</code> namespace)</li>
+    <li><a href="https://www.openpolicyagent.org/docs/policy-language">OPA Docs — Policy
+    Language</a> (rule kinds, unification, iteration, safety)</li>
+    <li><a href="https://www.openpolicyagent.org/docs/v0-upgrade">OPA Docs — v0 to v1 upgrade
+    guide</a> (Rego v1 keyword requirements)</li>
+  </ul>
+  <h3>Related</h3>
+  <ul>
+    <li><a href="../lessons/0001-rego-builds-a-json-document.html">Lesson 1 — Rego Builds a JSON
+    Document</a></li>
+    <li><a href="0002-opa-cli-cheatsheet.html">Reference 2 — OPA CLI cheat sheet</a></li>
+  </ul>
+  <div class="ask-teacher">
+    <strong>A term missing, or a definition that did not survive contact with reality?</strong>
+    Tell me in the session and I will amend this file — it is meant to be the one place the
+    vocabulary is settled.
+  </div>
+</footer>
+
+</main>
+<script src="../../assets/syntax-highlight-rego.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>

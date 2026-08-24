@@ -1,0 +1,61 @@
+/* flow-boxes.css — A horizontal "box → box → box" pipeline diagram for showing data flowing through stages. Wraps to a vertical stack on narrow screens. Pairs with base.css. */
+
+.flow {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0 0 1.6rem;
+  font-family: var(--sans);
+}
+
+.flow .box {
+  flex: 1 1 9rem;
+  min-width: 8rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.8rem 0.9rem;
+  text-align: center;
+}
+
+.flow .box.policy {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.flow .box .t {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 0.3rem;
+}
+
+.flow .box .t code { font-size: 0.9em; background: none; padding: 0; }
+
+.flow .box .d {
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.flow .box .d code { font-size: 0.9em; }
+
+.flow .arrow {
+  display: flex;
+  align-items: center;
+  font-size: 1.1rem;
+  color: var(--ink-faint);
+  flex: 0 0 auto;
+}
+
+@media (max-width: 34rem) {
+  .flow { flex-direction: column; }
+  .flow .arrow { justify-content: center; transform: rotate(90deg); }
+}
+
+@media print {
+  .flow { break-inside: avoid; }
+  .flow .box.policy { background: #f0f0f0; border-color: #666; }
+}

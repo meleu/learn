@@ -1,0 +1,304 @@
+/* base.css — Shared foundational stylesheet for every lesson and reference document in this project. Tufte-inspired: generous margins, readable serif prose, sidenotes, light/dark themes, print-friendly. */
+
+:root {
+  --ink: #1a1a1a;
+  --ink-soft: #5c5c5c;
+  --ink-faint: #8a8a8a;
+  --paper: #fffef9;
+  --paper-sunk: #f4f1e8;
+  --rule: #ddd8c8;
+  --accent: #8f2b1f;
+  --accent-soft: #f0e2df;
+  --good: #1f6b3a;
+  --good-soft: #e0efe5;
+  --warn: #8a6414;
+  --warn-soft: #f7eed6;
+  --code-bg: #f4f1e8;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", "Cascadia Code", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --measure: 34rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #e8e4d9;
+    --ink-soft: #a8a294;
+    --ink-faint: #7a7568;
+    --paper: #16171a;
+    --paper-sunk: #1e2024;
+    --rule: #34363c;
+    --accent: #e08a7c;
+    --accent-soft: #3a2724;
+    --good: #7fc99a;
+    --good-soft: #1d2f24;
+    --warn: #d9b466;
+    --warn-soft: #302818;
+    --code-bg: #1e2024;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { font-size: 1.5rem; -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  padding: 4rem 1.5rem 8rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  line-height: 1.62;
+  font-kerning: normal;
+  font-variant-numeric: oldstyle-nums proportional-nums;
+}
+
+/* ---- Layout: a centred measure, with room for margin notes on wide screens ---- */
+
+.sheet { max-width: var(--measure); margin: 0 auto; }
+
+@media (min-width: 1100px) {
+  .sheet { max-width: 52rem; padding-right: 18rem; margin-left: auto; margin-right: auto; }
+  .sheet > * { max-width: var(--measure); }
+  .sheet > figure.wide, .sheet > .wide { max-width: none; }
+}
+
+/* ---- Masthead ---- */
+
+.masthead { margin-bottom: 3.5rem; }
+
+.eyebrow {
+  font-family: var(--sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.9rem;
+}
+
+h1 {
+  font-weight: 400;
+  font-size: 2.6rem;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.6rem;
+}
+
+.standfirst {
+  font-size: 1.15rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  font-style: italic;
+  margin: 0;
+}
+
+h2 {
+  font-weight: 400;
+  font-size: 1.55rem;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin: 3.2rem 0 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--rule);
+}
+
+h3 {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+  margin: 2rem 0 0.6rem;
+}
+
+p { margin: 0 0 1.15rem; }
+
+a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--accent); }
+a:hover { background: var(--accent-soft); }
+
+strong { font-weight: 600; }
+
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
+
+/* ---- Lists ---- */
+
+ul, ol { margin: 0 0 1.15rem; padding-left: 1.3rem; }
+li { margin-bottom: 0.45rem; }
+li > ul, li > ol { margin-top: 0.45rem; }
+
+/* ---- Code ---- */
+
+code {
+  font-family: var(--mono);
+  font-size: 0.84em;
+  font-variant-numeric: normal;
+  background: var(--code-bg);
+  padding: 0.12em 0.35em;
+  border-radius: 3px;
+}
+
+pre {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 1rem 1.1rem;
+  margin: 0 0 1.3rem;
+  font-variant-numeric: normal;
+  /* Wrap rather than scroll: a reader should never have to drag a code block
+     sideways to finish reading a command. Indentation is still preserved. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 4;
+}
+
+pre code { background: none; padding: 0; font-size: inherit; }
+
+figure { margin: 0 0 1.6rem; }
+
+figcaption {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--ink-faint);
+  margin-top: 0.5rem;
+}
+
+/* A labelled code block: filename or command sits above the code */
+.code-label {
+  font-family: var(--sans);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 0.35rem;
+}
+
+/* ---- Margin notes ---- */
+
+.note {
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  border-left: 2px solid var(--rule);
+  padding-left: 0.9rem;
+  margin: 0 0 1.3rem;
+}
+
+@media (min-width: 1100px) {
+  .note.margin {
+    position: absolute;
+    width: 15rem;
+    margin-left: calc(var(--measure) + 2.5rem);
+    margin-top: -0.3rem;
+    border-left: none;
+    padding-left: 0;
+  }
+  .sheet { position: relative; }
+}
+
+/* ---- Callouts ---- */
+
+.callout {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 1rem 1.2rem;
+  margin: 0 0 1.4rem;
+  border-radius: 0 4px 4px 0;
+}
+.callout > :last-child { margin-bottom: 0; }
+.callout .callout-title {
+  font-family: var(--sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin: 0 0 0.5rem;
+}
+.callout.good { border-left-color: var(--good); background: var(--good-soft); }
+.callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+
+/* ---- Key idea: the one thing to remember ---- */
+
+.key-idea {
+  border: 1px solid var(--rule);
+  border-top: 3px solid var(--accent);
+  background: var(--paper-sunk);
+  padding: 1.4rem 1.5rem;
+  margin: 2rem 0;
+  border-radius: 0 0 4px 4px;
+}
+.key-idea > :last-child { margin-bottom: 0; }
+.key-idea p { font-size: 1.1rem; line-height: 1.5; }
+
+/* ---- Tables ---- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  margin: 0 0 1.5rem;
+}
+th, td { text-align: left; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--ink-faint);
+}
+td code { font-size: 0.82em; }
+.table-scroll { overflow-x: auto; margin-bottom: 1.5rem; }
+.table-scroll table { margin-bottom: 0; }
+
+/* ---- Footer ---- */
+
+.colophon {
+  margin-top: 5rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+.colophon h3 { margin-top: 1.6rem; }
+.colophon ul { padding-left: 1.1rem; }
+
+.ask-teacher {
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  background: var(--paper-sunk);
+  border: 1px dashed var(--rule);
+  border-radius: 4px;
+  padding: 1rem 1.2rem;
+  margin: 2.5rem 0 0;
+  color: var(--ink-soft);
+}
+.ask-teacher strong { color: var(--ink); }
+
+/* ---- Print ---- */
+
+@media print {
+  :root {
+    --ink: #000; --ink-soft: #333; --ink-faint: #555;
+    --paper: #fff; --paper-sunk: #f6f6f6; --rule: #bbb; --code-bg: #f6f6f6;
+  }
+  html { font-size: 11pt; }
+  body { padding: 0; }
+  .sheet { max-width: none; padding-right: 0; }
+  .sheet > * { max-width: none; }
+  h2, h3 { break-after: avoid; }
+  pre, figure, .callout, .key-idea, table { break-inside: avoid; }
+  a { border-bottom: none; text-decoration: underline; }
+  .no-print { display: none !important; }
+  .note.margin { position: static; width: auto; margin-left: 0; border-left: 2px solid var(--rule); padding-left: 0.9rem; }
+}

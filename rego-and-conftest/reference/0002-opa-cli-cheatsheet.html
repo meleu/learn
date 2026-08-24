@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · OPA CLI Cheat Sheet</title>
+<link rel="stylesheet" href="../../assets/base.css">
+</head>
+<body>
+<main class="sheet">
+
+<header class="masthead">
+  <p class="eyebrow">Rego &amp; Conftest · Reference 2</p>
+  <h1>OPA CLI Cheat Sheet</h1>
+  <p class="standfirst">The <code>opa</code> commands worth keeping at hand. Verified against
+  OPA 1.19.0 on this machine.</p>
+</header>
+
+<div class="key-idea">
+  <p>When a policy misbehaves, do not reread the rule. <strong>Print the document</strong> and
+  find the key that is missing or wrong. Debugging Rego is nearly always "which key is undefined,
+  and why".</p>
+</div>
+
+<h2>The loop</h2>
+
+<figure>
+<pre><code class="lang-shell"># the whole document your package built
+opa eval -d policy.rego -i input.json 'data.example' --format pretty
+
+# one node of it
+opa eval -d policy.rego -i input.json 'data.example.allow' --format pretty
+
+# the entire tree, every package
+opa eval -d policy.rego -i input.json 'data' --format pretty</code></pre>
+<figcaption>Edit input → re-run → read the document. This is the whole workflow.</figcaption>
+</figure>
+
+<h2><code>opa eval</code> — the workhorse</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Flag</th><th>Does</th></tr></thead>
+  <tbody>
+    <tr><td><code>-d</code>, <code>--data</code></td><td>Load a <code>.rego</code> policy, a <code>.json</code>/<code>.yaml</code> data file, or recursively a whole directory of them.</td></tr>
+    <tr><td><code>-i</code>, <code>--input</code></td><td>The file that becomes the <code>input</code> global.</td></tr>
+    <tr><td><code>--format pretty</code></td><td>Human-readable output. Without it you get a verbose result wrapper.</td></tr>
+    <tr><td><code>--format json</code></td><td>Machine-readable, with binding metadata.</td></tr>
+    <tr><td><code>--explain full</code></td><td>Print the full evaluation trace. Reach for it when a rule is undefined and you cannot see why.</td></tr>
+    <tr><td><code>--fail</code></td><td>Exit non-zero when the result is undefined. Useful in scripts.</td></tr>
+    <tr><td><code>--fail-defined</code></td><td>Exit non-zero when the result <em>is</em> defined — the shape a "deny" check wants.</td></tr>
+    <tr><td><code>-b</code>, <code>--bundle</code></td><td>Load a directory or tarball as a bundle (policies + data together).</td></tr>
+  </tbody>
+</table>
+</div>
+
+<figure>
+  <p class="code-label">Other useful shapes</p>
+<pre><code class="lang-shell"># an ad-hoc expression, no files at all
+opa eval --format pretty 'x := 21; y := x * 2'
+
+# why is this undefined?
+opa eval --explain full --format pretty -d policy.rego -i input.json 'data.example.allow'
+
+# pipe the input in instead of using a file
+echo '{"age": 21}' | opa eval -d policy.rego -I 'data.example' --format pretty</code></pre>
+</figure>
+
+<h2>Reading the output</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>You see</th><th>It means</th></tr></thead>
+  <tbody>
+    <tr><td><code>{}</code></td><td>The package exists but every rule in it was undefined. Usually a condition that did not hold — not an error.</td></tr>
+    <tr><td><code>undefined</code></td><td>You queried a single node and it has no value. Same cause, narrower question.</td></tr>
+    <tr><td><code>"allow": false</code></td><td>A real value is present. Something — usually a <code>default</code> — supplied it.</td></tr>
+    <tr><td><code>[]</code></td><td>A multi-value (set) rule ran and nothing contributed. An empty set is a value, unlike undefined.</td></tr>
+    <tr><td><code>rego_parse_error: `if` keyword is required before rule body</code></td><td>Rego v0 syntax. The snippet predates OPA 1.0; add <code>if</code>.</td></tr>
+    <tr><td><code>rego_type_error: …</code></td><td>Caught at compile time, before evaluation. Often a safety violation — an unbound variable.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Other <code>opa</code> subcommands</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Command</th><th>Use</th></tr></thead>
+  <tbody>
+    <tr><td><code>opa run</code></td><td>Interactive REPL. The fastest way to try a built-in function. Load context with <code>opa run policy.rego</code>.</td></tr>
+    <tr><td><code>opa test</code></td><td>Run Rego unit tests — rules named <code>test_*</code>. Add <code>-v</code> for per-test detail.</td></tr>
+    <tr><td><code>opa check</code></td><td>Compile without evaluating. A fast syntax and safety check for CI.</td></tr>
+    <tr><td><code>opa fmt</code></td><td>Canonical formatting. <code>-w</code> writes in place; <code>--diff</code> shows the change. Also the quickest way to spot v0 syntax.</td></tr>
+    <tr><td><code>opa deps</code></td><td>Show what a query depends on. Useful on a policy set you inherited.</td></tr>
+    <tr><td><code>opa version</code></td><td>Confirm you are on OPA ≥ 1.0, i.e. Rego v1.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Rego v1 syntax, at a glance</h2>
+
+<figure>
+<pre><code class="lang-rego">package example
+
+# a rule with a body needs `if`
+allow if input.age >= 18
+
+# a constant does not
+default allow := false
+
+# a body with several expressions is an AND — all must hold
+allow if {
+	input.age >= 18
+	input.country == "BR"
+}</code></pre>
+<figcaption>Everything beyond this — sets, iteration, functions — arrives in later lessons and
+will be added here as it does.</figcaption>
+</figure>
+
+<footer class="colophon">
+  <h3>Sources</h3>
+  <ul>
+    <li>Local <code>opa --help</code> and <code>opa eval --help</code> (OPA 1.19.0). The flags
+    above are copied from this machine, not from documentation.</li>
+    <li><a href="https://www.openpolicyagent.org/docs/policy-reference">OPA Docs — Policy
+    Reference</a> (built-in functions, grammar)</li>
+    <li><a href="https://www.openpolicyagent.org/docs/v0-upgrade">OPA Docs — v0 to v1 upgrade
+    guide</a></li>
+  </ul>
+  <h3>Related</h3>
+  <ul>
+    <li><a href="0001-glossary.html">Reference 1 — Glossary</a></li>
+    <li><a href="../lessons/0001-rego-builds-a-json-document.html">Lesson 1 — Rego Builds a JSON
+    Document</a></li>
+  </ul>
+  <div class="ask-teacher">
+    <strong>This sheet grows with the course.</strong> When a command earns its place in your
+    daily loop, tell me and I will add it here rather than leaving it buried in a lesson. A
+    conftest sheet will join it once we get there.
+  </div>
+</footer>
+
+</main>
+<script src="../../assets/syntax-highlight-rego.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>
