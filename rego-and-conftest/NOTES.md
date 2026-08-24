@@ -98,9 +98,19 @@ Everything below was run on this machine and is already baked into lesson 3 / re
 - **`N tests` counts rule evaluations = rules × parsed documents**, not files. Three rules over a
   two-document YAML reports `6 tests`.
 - **The `0 tests` trap**: a package other than `main` produces `0 tests, 0 passed` and **exit 0**.
-  `-o json` still emits `"successes": 0`, so a CI guard must *add up* successes + warnings +
-  failures rather than test for the field's presence. Working `jq` guard is in reference 3,
-  verified against all three cases (violation → 1, clean → 0, wrong package → 1).
+  There is **no built-in flag** to reject it — `--strict` is Rego compiler strictness, not this.
+- **It is the only silent misconfiguration.** Verified: a missing `-p` dir, an empty `-p` dir, and
+  a Rego syntax error each exit 1 with an `Error:` of their own. So CI needs exactly one added
+  check: "did any rule actually run?"
+- **`-o tap` is the cleanest signal**: prints a `1..N` plan line when rules ran, and *nothing at
+  all* when none did. So `[ -s report.tap ] || exit 1` is the whole guard — no `jq`. Reference 3
+  has it, verified over six cases (violating, clean, wrong package, empty dir, missing dir, syntax
+  error). The earlier `jq`-summing guard worked but was needless; `-o json` emits
+  `"successes": 0` even when nothing ran, which is why the naive presence-test fails.
+- **Canary fixture** is the stronger second guard: a committed manifest that must be denied, with
+  the check grepping for `^not ok ` rather than a non-zero exit. Grepping matters — a first draft
+  keyed on the exit code alone reported "ok" for an empty policy dir, because a crash also exits
+  non-zero. Catches rules that load but no longer match, which the TAP guard cannot.
 - `--combine` rewrites `input` into an array of `{"path", "contents"}` objects — existing
   single-document rules stop matching. Not a drop-in flag.
 - `exception contains rules if …` yields lists of rule **suffixes**: `["replicas"]` excepts

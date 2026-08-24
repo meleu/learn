@@ -388,6 +388,10 @@ never asked.</p>
   it evaluated; a run that found no rules reports zero and exits 0 just the same. Teach people to
   read the count, not the colour. Any CI job running conftest should fail on <code>0 tests</code>,
   because that number means the gate was never closed.</p>
+  <p>There is no flag for it — you add the check yourself, and it is three lines. The
+  <a href="../reference/0003-conftest-cheatsheet.html">cheat sheet</a> has two verified recipes.
+  Worth knowing that this is the <em>only</em> silent misconfiguration: a missing policy directory,
+  an empty one, and a Rego syntax error all exit 1 on their own.</p>
 </div>
 
 <p>Two ways out, both fine:</p>

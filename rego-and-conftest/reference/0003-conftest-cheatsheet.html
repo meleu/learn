@@ -107,7 +107,7 @@ precisely because of the trap below.</figcaption>
   <thead><tr><th>You see</th><th>It means</th></tr></thead>
   <tbody>
     <tr><td><code>N tests</code></td><td><strong>Rule evaluations</strong>: rules × parsed documents. Not files, not assertions.</td></tr>
-    <tr><td><code>0 tests</code> †</td><td>No rules were found at that address. Wrong package, wrong <code>-p</code>, or an empty policy directory. <strong>Exits 0.</strong></td></tr>
+    <tr><td><code>0 tests</code> †</td><td>Policies loaded and compiled, but nothing was found at the queried address — a package that is not <code>main</code>. <strong>Exits 0.</strong> (A missing or empty <code>-p</code> directory, or a Rego syntax error, is a <em>different</em> case: conftest errors and exits 1.)</td></tr>
     <tr><td><code>N passed</code></td><td>Rules that contributed no member. Includes rules whose key was undefined — see the silent pass.</td></tr>
     <tr><td><code>1 warning</code></td><td>A <code>warn</code> rule fired. Does not affect the exit code without <code>--fail-on-warn</code>.</td></tr>
     <tr><td><code>0 exceptions</code></td><td>Denials suppressed by an <code>exception</code> rule; those lines print as <code>EXCP</code>. An exception names a rule <em>suffix</em>, so <code>["replicas"]</code> excepts <code>deny_replicas</code>.</td></tr>
@@ -125,6 +125,8 @@ precisely because of the trap below.</figcaption>
     <tr><td>Warnings only</td><td><code>0</code> — or <code>1</code> with <code>--fail-on-warn</code></td></tr>
     <tr><td>Any <code>deny</code>/<code>violation</code> fired</td><td><code>1</code></td></tr>
     <tr><td>No rules found (<code>0 tests</code>) †</td><td><code>0</code> — the dangerous one</td></tr>
+    <tr><td>Policy dir missing or empty</td><td><code>1</code>, with an <code>Error:</code> on stderr</td></tr>
+    <tr><td>Rego syntax error</td><td><code>1</code>, with <code>rego_parse_error</code></td></tr>
     <tr><td>Anything, with <code>--no-fail</code></td><td><code>0</code></td></tr>
   </tbody>
 </table>
@@ -140,24 +142,68 @@ precisely because of the trap below.</figcaption>
   <p><strong>B · The package is not <code>main</code>.</strong> Conftest queries
   <code>data.main.deny</code> and finds nothing there. Reported as <code>0 tests, 0 passed</code>,
   exit 0. <strong>The count is the tell</strong> — make CI reject <code>0 tests</code>.</p>
+  <p>This is the <em>only</em> silent misconfiguration. A missing policy directory, an empty one,
+  and a Rego syntax error all exit 1 on their own. So the single thing your CI has to add is a
+  check that rules were actually evaluated.</p>
 </div>
 
+<h2>Making CI reject <code>0 tests</code> †</h2>
+
+<p class="note">There is <strong>no built-in flag</strong> for this. <code>--strict</code> is
+Rego's compiler strictness, not this; <code>--fail-on-warn</code> only promotes warnings. You have
+to add the check yourself. Both recipes below were verified on this machine against six cases:
+violating file, clean file, wrong package, empty policy dir, missing policy dir, and a Rego syntax
+error.</p>
+
 <figure>
-  <p class="code-label">A CI guard for trap B</p>
+  <p class="code-label">Recipe 1 — the TAP plan line (simplest)</p>
 <pre><code class="lang-shell">#!/usr/bin/env bash
-# run the gate, keeping both the report and conftest's own verdict
-conftest test -o json "$@" &gt; report.json; RC=$?
+# `-o tap` prints a `1..N` plan line when rules ran, and NOTHING AT ALL when none did.
+conftest test -o tap "$@" &gt; report.tap; rc=$?
 
-# a run that evaluated nothing is a broken gate, not a passing one
-jq -e '[.[] | .successes + ((.warnings//[]) | length) + ((.failures//[]) | length)] | add &gt; 0' \
-  report.json &gt; /dev/null || { echo "conftest evaluated no rules"; exit 1; }
+if [ ! -s report.tap ]; then
+  echo "conftest evaluated no rules (check --policy and the package name)" &gt;&amp;2
+  exit 1
+fi
 
-exit $RC</code></pre>
-<figcaption>Verified on this machine against all three cases: violations exit 1, a clean file exits
-0, and a mismatched package exits 1 with the message. Note that <code>-o json</code> still reports
-<code>"successes": 0</code> when nothing ran, so testing for the field's <em>presence</em> would
-not catch it — you have to add the numbers up.</figcaption>
+cat report.tap
+exit $rc</code></pre>
+<figcaption>Empty stdout is the whole signal — no <code>jq</code>, no parsing. Verified: violating
+→ 1, clean → 0, wrong package → 1 with the message, and the three load errors → 1 from conftest
+itself.</figcaption>
 </figure>
+
+<figure>
+  <p class="code-label">Recipe 2 — a canary manifest (catches more)</p>
+<pre><code class="lang-shell">#!/usr/bin/env bash
+# testdata/canary-deployment.yaml is committed and MUST be denied.
+# Grepping for a real denial - not just a non-zero exit - so that a crash,
+# a missing policy dir or a namespace mismatch cannot masquerade as success.
+out=$(conftest test -o tap "$@" testdata/canary-deployment.yaml 2&gt;&amp;1)
+
+if printf '%s' "$out" | grep -q '^not ok '; then
+  echo "canary ok: policies are live"
+  exit 0
+fi
+
+echo "canary produced no denial - policies are not being enforced" &gt;&amp;2
+printf '%s\n' "$out" &gt;&amp;2
+exit 1</code></pre>
+<figcaption>Verified against all six cases. Also catches what recipe 1 cannot: rules that still
+load and run but no longer match — someone narrowing a rule until it never fires.</figcaption>
+</figure>
+
+<div class="callout">
+  <p class="callout-title">Which one</p>
+  <p>Recipe 1 in every pipeline — it is three lines and answers "did the gate run?".</p>
+  <p>Recipe 2 as well, once the policies matter enough that someone might quietly weaken one. It
+  answers the stronger question: "does the gate still bite?" The canary is a config file, so it
+  costs nothing to keep and it fails loudly the day a refactor stops matching.</p>
+  <p class="note">The check <em>underneath</em> both is unit-testing the policy itself with
+  <code>opa test</code> / <code>conftest verify</code>. That is a lesson of its own — these two
+  recipes guard the wiring, not the logic.</p>
+</div>
+
 
 <h2>Parsers available in this build</h2>
 
