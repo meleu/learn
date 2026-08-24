@@ -27,55 +27,11 @@
   on a file it should have rejected.</p>
 </div>
 
-<h2>1 · First, your file becomes <code>input</code></h2>
 
-<p>Start from the file you would actually be checking at work.</p>
+<h2>1 · The four conventions</h2>
 
-<figure>
-  <p class="code-label">deployment.yaml</p>
-<pre><code class="lang-yaml">apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: hello
-  namespace: default
-spec:
-  replicas: 1
-  template:
-    spec:
-      containers:
-        - name: app
-          image: nginx:1.27</code></pre>
-</figure>
-
-<p>Rego does not read YAML. So the first thing conftest does is turn that file into the JSON
-document your rules will address — and it will show you exactly what it produced:</p>
-
-<figure>
-<pre><code class="lang-shell">$ conftest parse deployment.yaml</code></pre>
-<pre><code class="lang-json">{
-  "apiVersion": "apps/v1",
-  "kind": "Deployment",
-  "metadata": {
-    "name": "hello",
-    "namespace": "default"
-  },
-  "spec": {
-    "replicas": 1,
-    "template": { "spec": { "containers": [ { "image": "nginx:1.27", "name": "app" } ] } }
-  }
-}</code></pre>
-<figcaption>Verified output, conftest dev build (OPA 1.19.0). Nested objects abbreviated onto one
-line here for space; the real output is fully expanded.</figcaption>
-</figure>
-
-<div class="key-idea">
-  <p><code>conftest parse</code> is the most useful command in the tool. It answers the only
-  question that matters when you start writing rules for an unfamiliar file: <strong>what does
-  <code>input</code> actually look like?</strong> Never guess a path — parse first.</p>
-</div>
-
-<p>That JSON becomes <code>input</code>. Your rules build a document from it, exactly as in
-lesson 2. Then conftest reads two keys out of that document — and nothing else.</p>
+<p>Conftest has to find your rules without being told where they are, so it fixes four things by
+convention — one at each stage of this pipeline:</p>
 
 <div class="flow">
   <div class="box">
@@ -99,15 +55,8 @@ lesson 2. Then conftest reads two keys out of that document — and nothing else
   </div>
 </div>
 
-<p>That is the whole of it. Once you have written a policy we will run conftest's query by hand
-with <code>opa eval</code> and get the identical result, which is the proof that no new language
-is involved — but the policy has to exist first.</p>
-
-<h2>2 · The four conventions</h2>
-
-<p>Because conftest has to find your rules without being told where they are, it fixes four things
-by convention. Each has a flag that overrides it, and each is a way to fail silently if you get
-it wrong.</p>
+<p>Each convention has a flag that overrides it, and each is a way to fail silently if you get it
+wrong.</p>
 
 <div class="table-scroll">
 <table>
@@ -153,10 +102,11 @@ href="https://www.conftest.dev/">"by default, Conftest looks for these rules in 
   need to learn to <em>run</em> them is the table above.</p>
 </div>
 
-<h2>3 · A Deployment policy</h2>
+<h2>2 · A Deployment policy</h2>
 
-<p>Three rules, in <code>policy/deployment.rego</code>. There is nothing here you have not seen:
-each is a partial set rule with a one-expression body.</p>
+<p>Now cash that table in. Here is a policy obeying all four rows — three rules, in a file at
+<code>policy/deployment.rego</code>. There is nothing in it you have not seen: each rule is a
+partial set rule with a one-expression body.</p>
 
 <figure>
   <p class="code-label">policy/deployment.rego</p>
@@ -188,6 +138,68 @@ warn contains "Deployment is missing the owner label" if not input.metadata.labe
   kinds in one directory, so a production policy opens with a <code>kind</code> guard. Guarding
   needs a two-expression body, which is the next lesson.</p>
 </div>
+
+<h2>3 · The file, and what your rules actually see</h2>
+
+<p>Those rules address <code>input.metadata.namespace</code>, <code>input.spec.replicas</code>
+and <code>input.metadata.labels.owner</code>. Those paths came from somewhere. Here is the
+Deployment they were written against:</p>
+
+<figure>
+  <p class="code-label">deployment.yaml</p>
+<pre><code class="lang-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+  namespace: default
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27</code></pre>
+</figure>
+
+<p>Rego does not read YAML. So the first thing conftest does is turn that file into the JSON
+document your rules will address — and it will show you exactly what it produced:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest parse deployment.yaml</code></pre>
+<pre><code class="lang-json">{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {
+    "name": "hello",
+    "namespace": "default"
+  },
+  "spec": {
+    "replicas": 1,
+    "template": { "spec": { "containers": [ { "image": "nginx:1.27", "name": "app" } ] } }
+  }
+}</code></pre>
+<figcaption>Verified output, conftest dev build (OPA 1.19.0). Nested objects abbreviated onto one
+line here for space; the real output is fully expanded.</figcaption>
+</figure>
+
+<div class="key-idea">
+  <p><code>conftest parse</code> is the most useful command in the tool. It answers the only
+  question that matters when you start writing rules for an unfamiliar file: <strong>what does
+  <code>input</code> actually look like?</strong> Never guess a path — parse first.</p>
+</div>
+
+<p>That JSON is <code>input</code>. Read it against the policy above: every path a rule
+addresses is a path you can put your finger on in this output. Your rules build a document from
+it, exactly as in lesson 2, and then conftest reads two keys out of that document — and nothing
+else.</p>
+
+<p class="note">In real work you would run <code>conftest parse</code> <em>before</em> writing a
+single rule, not after. This page took them in the other order so the conventions could come
+first; do not read the ordering here as the workflow. The habit is in the drill, where parsing is
+step 3 and the policy is step 4.</p>
+
+<p>A policy, a file, and four conventions connecting them. That is everything conftest needs —
+so run it.</p>
 
 <h2>4 · Run it, and read the count carefully</h2>
 
