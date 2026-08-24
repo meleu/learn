@@ -27,6 +27,32 @@ project itself or a talk by a maintainer.
   The parser list and defaults live in the code and in `conftest test --help`. Use for:
   confirming behaviour when the docs are ambiguous.
 
+### Deep dives on one question
+
+- [Anders Eknert, "How to express OR in Rego"](https://web.archive.org/web/20260313074937/https://www.styra.com/blog/how-to-express-or-in-rego/)
+  (Styra, 2023, updated 2025). **Archive link on purpose — styra.com no longer resolves**, the
+  company having been absorbed by Apple; OPA's docs already linked this via web.archive.org before
+  that happened. Linked from OPA's own *Logical OR* section, and by the author of Regal. Walks
+  through **eight** ways to express OR — default assignment, helper rules, helper
+  functions (including equality pattern-matching on arguments), `else`, `in`, object/map branching,
+  `object.get`, comprehensions — and closes with a ranking of which to prefer. Use for: the first
+  question every newcomer asks, and for backlog item 5. **Caveat:** one snippet still uses v0
+  bodiless syntax (`allow { … }`); everything else is v1-clean. Also flags the
+  [open OPA issue](https://github.com/open-policy-agent/opa/issues/2345) proposing an OR operator.
+
+### Tooling
+
+- [Regal](https://github.com/open-policy-agent/regal) — the Rego linter. Originally Styra's; it
+  now lives in the **open-policy-agent** org, with docs at
+  [openpolicyagent.org/projects/regal](https://www.openpolicyagent.org/projects/regal).
+  **Installed on this machine (0.42.0, via linuxbrew).** Catches idiomatic and correctness problems
+  `opa check` does not, and has an editor/LSP integration. Verified session 4: it does **not**
+  catch a dead rule (mutually exclusive equalities in one body), even with `--enable-all` — so it
+  complements policy tests, it does not replace them.
+- [Rego Style Guide](https://github.com/open-policy-agent/rego-style-guide) — also moved from
+  Styra to the open-policy-agent org. The written conventions Regal enforces; readable on its own,
+  and a ready-made answer to "is this idiomatic?" that does not need a community round-trip.
+
 ### Version-critical
 
 - [OPA Docs: v0 → v1 upgrade guide](https://www.openpolicyagent.org/docs/v0-upgrade)

@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 4 · AND Down, OR Sideways</title>
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" href="../../assets/rego-and-or-grid.css">
+</head>
+<body>
+<main class="sheet">
+
+<p class="crumb"><a href="../index.html">↑ Course index</a></p>
+
+<header class="masthead">
+  <p class="eyebrow">Rego &amp; Conftest · Lesson 4</p>
+  <h1>AND Down, OR Sideways</h1>
+  <p class="standfirst">Rego has no <code>and</code> keyword and no <code>or</code> keyword. It
+  does not need them: <strong>stacking expressions inside one body is AND, and repeating the rule
+  name is OR.</strong> That is the whole logic system, and it is the last structural thing you
+  need before your policies stop being one-liners.</p>
+</header>
+
+<div class="callout good">
+  <p class="callout-title">Your win for this lesson</p>
+  <p>You close <a href="0003-the-conftest-contract.html">lesson 3</a>'s open debt — the missing
+  <code>input.kind</code> guard — and write a rule whose message names the offending value, which
+  needs both halves of today's model at once.</p>
+</div>
+
+<h2>1 · Two operators, spelled with layout</h2>
+
+<p>Every other language you know spells these with words. Rego spells them with position:</p>
+
+<div class="andor">
+  <div class="rule">
+    <div class="head">deny contains msg if {</div>
+    <ul class="body">
+      <li>input.kind == "Deployment"</li>
+      <li>input.spec.replicas &lt; 2</li>
+    </ul>
+    <div class="foot">}</div>
+  </div>
+  <div class="or">OR</div>
+  <div class="rule">
+    <div class="head">deny contains msg if {</div>
+    <ul class="body">
+      <li>input.kind == "StatefulSet"</li>
+      <li>input.spec.replicas &lt; 2</li>
+    </ul>
+    <div class="foot">}</div>
+  </div>
+</div>
+
+<p>Read down a column and you are reading AND. Read across the columns and you are reading OR.
+The docs say both outright — <a
+href="https://www.openpolicyagent.org/docs/policy-language#the-basics">"The rule body can be
+understood intuitively as: expression-1 AND expression-2 AND … AND expression-N"</a><a
+href="#src-1">¹</a>, and <a href="https://www.openpolicyagent.org/docs#logical-or">"When you join
+multiple expressions together in a query you are expressing logical AND. To express logical OR in
+Rego you define multiple rules with the same name."</a><a href="#src-2">²</a></p>
+
+<div class="key-idea">
+  <p><strong>AND goes down. OR goes sideways.</strong> Six words, and it is the entire control
+  flow of the language. Put it on the whiteboard before you write a single rule in front of your
+  team — almost every "why doesn't my policy fire?" question is someone who has stacked
+  alternatives where they meant to spread them.</p>
+</div>
+
+<p>You already use the OR half without calling it that. Lesson 2's three
+<code>violations contains …</code> rules and lesson 3's three <code>deny</code> rules were
+sideways all along: independent definitions of one name, each contributing to one set. The docs
+call this <a
+href="https://www.openpolicyagent.org/docs/policy-language#incremental-definitions"><em>incremental
+definition</em></a><a href="#src-1">¹</a> — new today is only that you may use it on
+<em>alternatives for the same message</em>, not just on different messages.</p>
+
+<h2>2 · AND: the guard that lesson 3 was missing</h2>
+
+<p>Lesson 3's policy assumed every file it saw was a Deployment. A real repository mixes kinds in
+one directory, so the first expression of a real rule says what it is willing to talk about:</p>
+
+<figure>
+  <p class="code-label">policy/replicas.rego</p>
+<pre><code class="lang-rego">package main
+
+deny contains "Deployment must have at least 2 replicas" if {
+	input.kind == "Deployment"
+	input.spec.replicas &lt; 2
+}</code></pre>
+</figure>
+
+<p>Two expressions, so both must hold. Two files to try it on, cut down to just the fields the
+rule addresses:</p>
+
+<figure>
+  <p class="code-label">deployment.yaml</p>
+<pre><code class="lang-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+spec:
+  replicas: 1</code></pre>
+</figure>
+
+<figure>
+  <p class="code-label">service.yaml</p>
+<pre><code class="lang-yaml">apiVersion: v1
+kind: Service
+metadata:
+  name: hello
+spec:
+  ports:
+    - port: 80</code></pre>
+</figure>
+
+<p>Hand the rule the Service and the first expression fails, the body does not hold, and the rule
+contributes nothing — which is exactly right, because a Service has no replicas to be wrong
+about:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test deployment.yaml
+FAIL - deployment.yaml - main - Deployment must have at least 2 replicas
+
+1 test, 0 passed, 0 warnings, 1 failure, 0 exceptions
+
+$ conftest test service.yaml
+
+1 test, 1 passed, 0 warnings, 0 failures, 0 exceptions</code></pre>
+<figcaption>Verified output. Same rule, same policy directory; the guard decides which files it
+speaks about.</figcaption>
+</figure>
+
+<p>Three things about bodies that are worth knowing now:</p>
+
+<ul>
+  <li><strong>Order does not change the result.</strong> A body is a conjunction, not a sequence —
+  shuffle those two lines and the same files fail. Order is for the human: lead with the guard so
+  a reader knows the subject before the predicate.</li>
+  <li><strong>A one-expression rule is the same thing.</strong> <code>deny contains "…" if
+  expr</code> is a body with one member. Lesson 3's rules were not a different form; they were
+  short.</li>
+  <li><strong>The separator is a newline</strong> (a <code>;</code> also works on one line, and
+  <code>opa fmt</code> will rewrite it into newlines).</li>
+</ul>
+
+<div class="callout warn">
+  <p class="callout-title">Flag this one for your coworkers</p>
+  <p>The guard is a filter, not an assertion. <code>input.kind == "Deployment"</code> inside a
+  <code>deny</code> body does <em>not</em> mean "the file must be a Deployment" — it means "ignore
+  this file unless it is one". Somebody will eventually write a rule that is silently skipped for
+  every file in the repository because its guard names a <code>kind</code> that never appears, and
+  the report will happily say <code>0 failures</code>.</p>
+</div>
+
+<h2>3 · The message is part of the AND too</h2>
+
+<p>A message that says <em>which</em> object is wrong, and <em>how</em> wrong, is worth the extra
+line. Build it with <code>sprintf</code> and bind it to a variable:</p>
+
+<figure>
+  <p class="code-label">policy/replicas.rego</p>
+<pre><code class="lang-rego">package main
+
+deny contains msg if {
+	input.kind == "Deployment"
+	input.spec.replicas &lt; 2
+	msg := sprintf(
+		"%s/%s has %d replicas; at least 2 required",
+		[input.kind, input.metadata.name, input.spec.replicas],
+	)
+}</code></pre>
+<figcaption><code>sprintf</code> takes exactly two arguments: a format string and an
+<em>array</em> of values. <code>%s</code> string, <code>%d</code> integer, <code>%v</code> for
+anything.<a href="#src-3">³</a></figcaption>
+</figure>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test deployment.yaml
+FAIL - deployment.yaml - main - Deployment/hello has 1 replicas; at least 2 required</code></pre>
+<figcaption>Verified output.</figcaption>
+</figure>
+
+<p>The head now says <code>contains msg</code>: the set member is whatever the variable was bound
+to, decided per evaluation, instead of a literal fixed at authoring time. And the assignment is
+not an aside — it is <strong>a third expression in the conjunction</strong>, which has a
+consequence:</p>
+
+<div class="callout warn">
+  <p class="callout-title">A third way to pass a file you should have failed</p>
+  <p>If any value inside that <code>sprintf</code> is undefined, the <code>sprintf</code> is
+  undefined, so the expression does not hold, so <em>the whole rule contributes nothing</em> — even
+  though the two checks above it both held. Verified: a one-replica Deployment with no
+  <code>metadata.name</code> passes this policy, silently.</p>
+<pre><code class="lang-shell">$ conftest test noname.yaml
+
+1 test, 1 passed, 0 warnings, 0 failures, 0 exceptions</code></pre>
+  <p>This is lesson 3's Trap A with a new face: an absent key now sabotages a rule from the
+  <em>message</em> rather than from the condition. Interpolate keys you are confident exist
+  (<code>kind</code>, <code>metadata.name</code>) and be deliberate about the rest.</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">A body has three expressions. The first two hold, the third is undefined.
+  What does the rule contribute?</p>
+  <ul class="quiz-options">
+    <li data-correct>Nothing at all, silently</li>
+    <li>Its message, exactly once</li>
+    <li>A hard error, loudly</li>
+    <li>An empty string member</li>
+  </ul>
+  <div class="quiz-explain">A body is an AND: one undefined expression makes the whole body fail
+  to hold, and a rule whose body does not hold contributes no member. There is no partial
+  credit and no error.</div>
+</div>
+
+<h2>4 · OR: two definitions, one name</h2>
+
+<p>StatefulSets have replicas too, and the same rule should cover them. In a language with
+<code>||</code> you would widen the condition; in Rego you add a column:</p>
+
+<figure>
+  <p class="code-label">policy/replicas.rego</p>
+<pre><code class="lang-rego">package main
+
+deny contains msg if {
+	input.kind == "Deployment"
+	input.spec.replicas &lt; 2
+	msg := sprintf(
+		"%s/%s has %d replicas; at least 2 required",
+		[input.kind, input.metadata.name, input.spec.replicas],
+	)
+}
+
+deny contains msg if {
+	input.kind == "StatefulSet"
+	input.spec.replicas &lt; 2
+	msg := sprintf(
+		"%s/%s has %d replicas; at least 2 required",
+		[input.kind, input.metadata.name, input.spec.replicas],
+	)
+}</code></pre>
+</figure>
+
+<p>A third file to exercise the new column, alongside the two from section 2:</p>
+
+<figure>
+  <p class="code-label">statefulset.yaml</p>
+<pre><code class="lang-yaml">apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+spec:
+  replicas: 1</code></pre>
+</figure>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test deployment.yaml statefulset.yaml service.yaml
+FAIL - deployment.yaml - main - Deployment/hello has 1 replicas; at least 2 required
+FAIL - statefulset.yaml - main - StatefulSet/db has 1 replicas; at least 2 required
+
+6 tests, 4 passed, 0 warnings, 2 failures, 0 exceptions</code></pre>
+<figcaption>Verified output. Six: <strong>two rule definitions × three documents</strong> — which
+sharpens lesson 3's arithmetic. Conftest counts <em>definitions</em>, not rule names, so adding a
+column to an existing <code>deny</code> raises the count.</figcaption>
+</figure>
+
+<p>Both columns write into the same set, so if both were ever to hold for one document with the
+same message, you would still see one message — lesson 2's set semantics, doing the deduplication
+for you.</p>
+
+<h2>5 · The mistake, and it will happen in front of you</h2>
+
+<p>Here is what someone reaches for instead, on the way to "Deployment or StatefulSet":</p>
+
+<figure>
+<pre><code class="lang-rego">deny contains "workload has fewer than 2 replicas" if {
+	input.kind == "Deployment"
+	input.kind == "StatefulSet"
+	input.spec.replicas &lt; 2
+}</code></pre>
+</figure>
+
+<p>It reads like a list of the kinds this rule covers. It is a demand that <code>input.kind</code>
+be two different strings at once, which nothing can satisfy:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa check policy/
+$ conftest test deployment.yaml statefulset.yaml
+
+2 tests, 2 passed, 0 warnings, 0 failures, 0 exceptions
+$ echo $?
+0</code></pre>
+<figcaption>Verified output. Valid Rego, compiles clean, runs, reports two passes, exits 0 — and
+that rule can never fire for any input in the universe.</figcaption>
+</figure>
+
+<div class="callout warn">
+  <p class="callout-title">Flag this one for your coworkers</p>
+  <p>A dead rule is worse than a missing one, because the report counts it and the count looks
+  healthy. Nothing in the toolchain will tell you: <code>opa check</code> is happy, conftest is
+  happy, CI is green — and so is <a
+  href="https://www.openpolicyagent.org/projects/regal">Regal</a>, the dedicated Rego linter, run
+  over this exact rule with <em>every</em> rule it has enabled (verified locally, Regal 0.42.0). No static
+  tool can know that <code>kind</code> is a single value; only an input can show you.</p>
+  <p>The habit that catches it is the same one that catches everything else here — <strong>write
+  the failing fixture first</strong> and confirm the rule actually rejects it. A rule you have
+  never watched fail is a rule you have not written yet. (A later lesson turns that habit into
+  committed tests with <code>conftest verify</code>.)</p>
+</div>
+
+<h2>6 · Two shorter spellings of the same OR</h2>
+
+<p>Two columns that differ only in one literal is a lot of duplicated body. When the alternatives
+are just <em>values</em>, put the OR inside the expression with a set and <code>in</code>:</p>
+
+<figure>
+<pre><code class="lang-rego">deny contains msg if {
+	input.kind in {"Deployment", "StatefulSet"}
+	input.spec.replicas &lt; 2
+	msg := sprintf(
+		"%s/%s has %d replicas; at least 2 required",
+		[input.kind, input.metadata.name, input.spec.replicas],
+	)
+}</code></pre>
+<figcaption>Verified: same two failures as section 4, now reported as <code>3 tests</code> —
+one definition, three documents.</figcaption>
+</figure>
+
+<p>When the alternatives are <em>conditions</em> rather than values, name the OR with a helper
+rule — a plain complete rule, defined twice, holding no message and belonging to no convention:</p>
+
+<figure>
+<pre><code class="lang-rego">replicated_workload if input.kind == "Deployment"
+
+replicated_workload if input.kind == "StatefulSet"
+
+deny contains msg if {
+	replicated_workload
+	input.spec.replicas &lt; 2
+	msg := sprintf(
+		"%s/%s has %d replicas; at least 2 required",
+		[input.kind, input.metadata.name, input.spec.replicas],
+	)
+}</code></pre>
+<figcaption>Verified: same two failures, and still <code>3 tests</code> — conftest counts only
+<code>deny</code>, <code>warn</code> and <code>violation</code> definitions, so helpers are free.
+</figcaption>
+</figure>
+
+<p>The helper is not a new mechanism. It is sideways-OR again, given a name so the guard reads as
+a noun and can be reused by every rule in the file. Note what it evaluates to:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -d policy/replicas.rego -i deployment.json 'data.main.replicated_workload' --format pretty
+true
+$ opa eval -d policy/replicas.rego -i service.json 'data.main.replicated_workload' --format pretty
+undefined</code></pre>
+<figcaption>Verified output. <code>true</code> or <strong>undefined</strong> — never
+<code>false</code>. Lesson 1's distinction, and the reason writing <code>replicated_workload</code>
+as a bare expression in a body works: undefined does not hold.</figcaption>
+</figure>
+
+<div class="key-idea">
+  <p>Choosing between the three: <strong>differ by a value → <code>in</code> a set</strong>;
+  <strong>differ by a condition, used once → two definitions</strong>; <strong>differ by a
+  condition, used more than once → a helper</strong>. All three are the same operator wearing
+  different clothes, so this is a readability call, not a correctness one.</p>
+  <p>That matches the advice in Styra's own guide to the question<a href="#src-4">⁴</a>: helper
+  rules are the idiomatic default, and <code>in</code> is for a <em>one-off</em> check of known
+  values — if you catch yourself repeating the same <code>in</code>, promote it to a helper. Note
+  that "two definitions of <code>deny</code>" and "a helper" are not rival techniques; the second
+  is the first, given a name.</p>
+</div>
+
+<p class="note">That guide lists five further ways to express OR, which is worth knowing exists
+before a coworker arrives having read it. Two are worth a sentence here. <strong><code>else</code></strong>
+chains rule bodies in a fixed evaluation order — real, but it buys ordering you almost never need,
+and it does not apply to a partial set rule like <code>deny</code> at all. <strong><code>default</code></strong>
+supplies a fallback value when every definition is undefined — also inapplicable here, and for a
+reason you already know: a partial set rule is <em>always</em> defined, because contributing
+nothing yields an empty set. Both belong to complete rules, which is why neither appears in a
+conftest policy.</p>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">You want one message for either of two unrelated conditions. What do you
+  write?</p>
+  <ul class="quiz-options">
+    <li data-correct>Two rules with one name</li>
+    <li>Two lines in one body</li>
+    <li>Two names in one rule</li>
+    <li>One rule with two heads</li>
+  </ul>
+  <div class="quiz-explain">Repeating the rule name is how Rego spells OR; both definitions
+  contribute to the same set. Two lines in one body would be AND, and would require both
+  conditions to hold at once.</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">What does a helper rule such as <code>is_workload</code> evaluate to when its
+  bodies all fail?</p>
+  <ul class="quiz-options">
+    <li data-correct>Undefined, so it never holds</li>
+    <li>False, which is a value</li>
+    <li>An empty set, always defined</li>
+    <li>An error about that rule</li>
+  </ul>
+  <div class="quiz-explain">A complete rule with no <code>default</code> is undefined when every
+  definition's body fails. Undefined does not hold, so a body referencing it fails — which is
+  exactly the behaviour you want from a guard.</div>
+</div>
+
+<div class="recall" data-recall="Answer from memory before revealing">
+  <p class="recall-q">A coworker shows you this and says "it never fires, and I have checked the
+  YAML ten times."</p>
+<pre><code class="lang-rego">deny contains msg if {
+	input.kind == "Deployment"
+	input.metadata.namespace == "default"
+	input.metadata.namespace == "kube-system"
+	msg := sprintf("%s is in a reserved namespace", [input.metadata.name])
+}</code></pre>
+  <p class="recall-q">Diagnose it, fix it two different ways, and say what would have caught it
+  before review.</p>
+  <div class="recall-answer">
+    <p><strong>Diagnosis:</strong> the two namespace lines are an AND, not a list of alternatives.
+    They ask for one string to equal <code>"default"</code> and <code>"kube-system"</code>
+    simultaneously, so the body can never hold — for any input. Everything about the run looks
+    healthy: it compiles, it is counted in the report, and it always passes.</p>
+    <p><strong>Fix one — sideways.</strong> Two definitions of <code>deny</code>, identical but
+    for the namespace literal.</p>
+    <p><strong>Fix two — inside the expression.</strong> The alternatives are only values, so
+    <code>input.metadata.namespace in {"default", "kube-system"}</code>, and the rest of the body
+    is unchanged. (A helper, <code>reserved_namespace if …</code> defined twice, is a third fix and
+    the right one once a second rule needs the same test.)</p>
+    <p><strong>What catches it:</strong> a fixture that must be denied, run before the rule is
+    believed. A rule nobody has seen fail is unverified — and a dead rule is invisible in a report
+    that only counts what ran.</p>
+  </div>
+</div>
+
+<h2>Terminal drill</h2>
+
+<p>Twelve minutes. Step 5 is the one to slow down on — you want to have written the dead rule
+yourself, once, deliberately.</p>
+
+<ol class="drill" data-drill="rego-0004">
+  <li>
+    <p>Fresh exercise directory. Run from the workspace root.</p>
+<pre><code class="lang-shell">mkdir -p exercises/004/policy &amp;&amp; cd exercises/004</code></pre>
+  </li>
+  <li>
+    <p>Three fixtures: two that must fail, one that must be ignored.</p>
+<pre><code class="lang-shell">cat &gt; deployment.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+spec:
+  replicas: 1
+EOF
+
+cat &gt; statefulset.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+spec:
+  replicas: 1
+EOF
+
+cat &gt; service.yaml &lt;&lt;'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello
+spec:
+  ports:
+    - port: 80
+EOF</code></pre>
+  </li>
+  <li>
+    <p><strong>AND.</strong> The guarded rule, then prove the guard works by watching the Service
+    pass a rule it has no business satisfying.</p>
+<pre><code class="lang-shell">cat &gt; policy/replicas.rego &lt;&lt;'EOF'
+package main
+
+deny contains "Deployment must have at least 2 replicas" if {
+	input.kind == "Deployment"
+	input.spec.replicas &lt; 2
+}
+EOF
+
+conftest test deployment.yaml; echo "exit=$?"
+conftest test service.yaml; echo "exit=$?"</code></pre>
+  </li>
+  <li>
+    <p><strong>The message joins the AND.</strong> Swap the literal for a <code>sprintf</code>,
+    then delete <code>metadata.name</code> from a copy of the Deployment and watch the rule go
+    quiet. Predict the report before you run it.</p>
+<pre><code class="lang-shell">cat &gt; policy/replicas.rego &lt;&lt;'EOF'
+package main
+
+deny contains msg if {
+	input.kind == "Deployment"
+	input.spec.replicas &lt; 2
+	msg := sprintf(
+		"%s/%s has %d replicas; at least 2 required",
+		[input.kind, input.metadata.name, input.spec.replicas],
+	)
+}
+EOF
+
+conftest test deployment.yaml
+
+printf 'apiVersion: apps/v1\nkind: Deployment\nspec:\n  replicas: 1\n' &gt; noname.yaml
+conftest test noname.yaml; echo "exit=$?"</code></pre>
+  </li>
+  <li>
+    <p><strong>The dead rule.</strong> Write the mistake on purpose, confirm the toolchain says
+    nothing, then check the count you get for three files.</p>
+<pre><code class="lang-shell">cat &gt; policy/dead.rego &lt;&lt;'EOF'
+package main
+
+deny contains "workload has fewer than 2 replicas" if {
+	input.kind == "Deployment"
+	input.kind == "StatefulSet"
+	input.spec.replicas &lt; 2
+}
+EOF
+
+opa check policy/; echo "opa check exit=$?"
+conftest test deployment.yaml statefulset.yaml service.yaml
+rm policy/dead.rego</code></pre>
+  </li>
+  <li>
+    <p><strong>OR.</strong> Fix it properly: append a second definition of <code>deny</code> for
+    StatefulSets. Both fixtures must now fail, and the Service must still pass.</p>
+<pre><code class="lang-shell">cat &gt;&gt; policy/replicas.rego &lt;&lt;'EOF'
+
+deny contains msg if {
+	input.kind == "StatefulSet"
+	input.spec.replicas &lt; 2
+	msg := sprintf(
+		"%s/%s has %d replicas; at least 2 required",
+		[input.kind, input.metadata.name, input.spec.replicas],
+	)
+}
+EOF
+
+conftest test deployment.yaml statefulset.yaml service.yaml; echo "exit=$?"</code></pre>
+  </li>
+  <li>
+    <p><strong>Collapse it.</strong> Rewrite the two definitions as one rule using
+    <code>in</code>. Same two failures, different count — say why out loud before you look.</p>
+  </li>
+  <li>
+    <p><strong>Name it.</strong> Rewrite again with a <code>replicated_workload</code> helper
+    defined twice, then inspect the helper directly for a Deployment and for the Service.</p>
+<pre><code class="lang-shell">conftest parse service.yaml &gt; service.json
+opa eval -d policy/replicas.rego -i service.json 'data.main' --format pretty</code></pre>
+  </li>
+  <li>
+    <p>Now yours — no snippet. Add a rule that denies any Deployment or StatefulSet whose
+    <code>metadata.labels.owner</code> is missing, with a message naming the object. Then make it
+    fire for a <code>CronJob</code> as well, using whichever of the three OR spellings you think
+    reads best, and be ready to defend the choice. (Ask me if any of it fights back.)</p>
+  </li>
+</ol>
+
+<div class="ask-teacher">
+  <strong>I am your teacher for this, not just the author of the page.</strong> Ask me anything in
+  the session: why Rego has no <code>or</code> keyword at all (there is an
+  <a href="https://github.com/open-policy-agent/opa/issues/2345">open OPA issue</a> proposing one),
+  what the other five OR spellings in Styra's guide are good for, when a guard belongs in every
+  rule versus in a helper, or how to phrase a message that tells someone what to change.
+</div>
+
+<footer class="colophon">
+
+  <h3>Read this next (primary source)</h3>
+  <p><a href="https://www.openpolicyagent.org/docs#logical-or">OPA Docs — Logical OR</a>, a
+  ten-line section that states today's rule and shows it with both a complete rule and a partial
+  one. Then read <a
+  href="https://www.openpolicyagent.org/docs/policy-language#incremental-definitions">Incremental
+  Definitions</a> in the language guide for the formal version. Both are short; between them they
+  are the whole of Rego's control flow.</p>
+
+  <p>Then, when you want the full map: <a
+  href="https://web.archive.org/web/20260313074937/https://www.styra.com/blog/how-to-express-or-in-rego/">"How to express OR in Rego"</a> by
+  Anders Eknert of Styra<a href="#src-4">⁴</a> — the article OPA's own docs send you to, and the
+  best single answer to the question your coworkers will ask first. It walks through eight
+  spellings, ranks them by how idiomatic they are, and is the source for the ranking in section 6.
+  Today's lesson covers three of the eight; the rest are worth recognising, not memorising.</p>
+
+  <h3>Main takeaways</h3>
+  <ul>
+    <li><strong>AND goes down, OR goes sideways.</strong> Expressions in one body are conjoined;
+    definitions sharing a rule name are disjoined. There are no <code>and</code>/<code>or</code>
+    keywords.</li>
+    <li>A <strong>guard</strong> is a first expression that filters which documents the rule speaks
+    about — <code>input.kind == "Deployment"</code>. It is not an assertion about the file.</li>
+    <li>Body order does not affect the result. Lead with the guard for the reader.</li>
+    <li><code>msg := sprintf(fmt, [args])</code> is <em>an expression in the AND</em>: an undefined
+    value inside it silences the whole rule, checks and all.</li>
+    <li>Stacking mutually exclusive equalities produces a <strong>dead rule</strong> — compiles,
+    counts, never fires. Not <code>opa check</code>, not conftest, not even Regal catches it. Only
+    a failing fixture does.</li>
+    <li>Three spellings of one OR: <code>in</code> a set for one-off value checks, two definitions
+    for conditions, a helper rule for conditions used more than once. Styra's guide lists eight;
+    <code>else</code> and <code>default</code> are not among the ones that apply to
+    <code>deny</code>.</li>
+    <li>Conftest's <code>N tests</code> counts <strong>rule definitions × documents</strong>;
+    helper rules are not counted.</li>
+  </ul>
+
+  <h3>Reference</h3>
+  <ul>
+    <li><a href="../reference/0001-glossary.html">Glossary</a> — see <em>rule body</em>,
+    <em>incremental</em>, <em>guard</em>, <em>helper rule</em> and the <em>Logic</em> section.</li>
+    <li><a href="../reference/0003-conftest-cheatsheet.html">Conftest cheat sheet</a> — the
+    contract and the flags used above.</li>
+    <li><a href="../reference/0002-opa-cli-cheatsheet.html">OPA CLI cheat sheet</a> — for
+    <code>opa eval</code> and <code>opa check</code>.</li>
+  </ul>
+
+  <h3>Lessons</h3>
+  <ul>
+    <li><a href="0001-rego-builds-a-json-document.html">Lesson 1 — Rego Builds a JSON
+    Document</a></li>
+    <li><a href="0002-many-rules-one-set.html">Lesson 2 — Many Rules, One Set</a></li>
+    <li><a href="0003-the-conftest-contract.html">Lesson 3 — The Conftest Contract</a></li>
+  </ul>
+
+  <h3>Sources</h3>
+  <ul>
+    <li id="src-1"><a href="https://www.openpolicyagent.org/docs/policy-language">OPA Docs — Policy
+    Language</a>: the body-as-conjunction sentence (<em>The Basics</em>) and
+    <em>Incremental Definitions</em>.</li>
+    <li id="src-2"><a href="https://www.openpolicyagent.org/docs#logical-or">OPA Docs — Logical
+    OR</a>: "To express logical OR in Rego you define multiple rules with the same name."</li>
+    <li id="src-3"><a
+    href="https://www.openpolicyagent.org/docs/policy-reference/builtins#builtin-strings-sprintf">OPA
+    Docs — Built-in Functions, <em>Strings</em></a>:
+    <code>output := sprintf(format, values)</code>.</li>
+    <li id="src-4"><a href="https://web.archive.org/web/20260313074937/https://www.styra.com/blog/how-to-express-or-in-rego/">Anders Eknert,
+    "How to express OR in Rego"</a> (Styra, 2023, updated 2025): the eight spellings and the
+    recommendation that closes it — helper rules as the default, <code>in</code> for one-off checks
+    of known values. Linked from OPA's <em>Logical OR</em> section. Served here from the Internet
+    Archive because <code>styra.com</code> no longer resolves, Styra having been absorbed by Apple.
+    One snippet in it still uses v0 bodiless syntax (<code>allow { … }</code>); read past it.</li>
+    <li>All command output on this page was executed on this machine against conftest (dev build,
+    OPA 1.19.0) and pasted verbatim. The Regal result is Regal 0.42.0 with
+    <code>--enable-all</code>.</li>
+  </ul>
+
+  <h3>When you want a second opinion</h3>
+  <p>"Should the guard live in every rule or in one helper?" is a taste question, and taste is what
+  a community is for. The <code>#help</code> channel of
+  <a href="https://slack.openpolicyagent.org/">OPA Slack</a> and
+  <a href="https://github.com/orgs/open-policy-agent/discussions">OPA Community Discussions</a>
+  will both look at a policy and tell you how it reads to someone else — paste it as a
+  <a href="https://play.openpolicyagent.org/">Rego Playground</a> link.</p>
+
+  <p class="crumb"><a href="../index.html">↑ Back to the course index</a></p>
+
+</footer>
+
+</main>
+
+<script src="../../assets/syntax-highlight-rego.js"></script>
+<script src="../../assets/quiz-multiple-choice.js"></script>
+<script src="../../assets/recall-prompt.js"></script>
+<script src="../../assets/drill-checklist.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>

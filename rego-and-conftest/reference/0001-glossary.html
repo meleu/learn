@@ -148,6 +148,59 @@ preparing a session for coworkers, budget extra time for those.</p>
 </table>
 </div>
 
+<h2>Logic: AND and OR</h2>
+
+<div class="key-idea">
+  <p><strong>AND goes down. OR goes sideways.</strong> Rego has no <code>and</code> or
+  <code>or</code> keyword: expressions stacked in one body are conjoined, and definitions sharing
+  one rule name are disjoined.</p>
+</div>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Term</th><th>Meaning</th><th>Looks like</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Conjunction</strong> (AND)</td>
+      <td>Every expression in a body must hold. One undefined expression silences the rule
+      entirely — including an undefined <code>msg :=</code>.</td>
+      <td>Two lines inside <code>{ … }</code>. A <code>;</code> is the same separator;
+      <code>opa fmt</code> rewrites it to a newline.</td>
+    </tr>
+    <tr>
+      <td><strong>Disjunction</strong> (OR) †</td>
+      <td>Any one definition holding is enough. Written by repeating the rule name — see
+      <em>Incremental</em> above.</td>
+      <td>Two <code>deny contains msg if { … }</code> blocks with the same message.</td>
+    </tr>
+    <tr>
+      <td><strong>Guard</strong></td>
+      <td>A leading expression that filters <em>which documents the rule speaks about</em>. A
+      filter, not an assertion: a guard naming a <code>kind</code> that never appears makes the
+      rule silently unreachable.</td>
+      <td><code>input.kind == "Deployment"</code> as the first line of a body.</td>
+    </tr>
+    <tr>
+      <td><strong>Helper rule</strong></td>
+      <td>An ordinary rule holding no message, used as a named condition inside other bodies.
+      Defined twice, it is a named OR. Conftest does not count it.</td>
+      <td><code>replicated_workload if input.kind == "Deployment"</code></td>
+    </tr>
+    <tr>
+      <td><strong>Dead rule</strong> †</td>
+      <td>A rule whose body can never hold — classically two equalities on one field, written
+      meaning OR. Compiles, is counted in the report, never fires. Only a failing fixture
+      catches it.</td>
+      <td><code>input.kind == "Deployment"</code> AND <code>input.kind == "StatefulSet"</code></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p class="note">Three spellings of one OR, in order of preference: alternatives that are only
+<em>values</em> → <code>x in {"a", "b"}</code>; alternatives that are <em>conditions</em>, used
+once → two rule definitions; the same condition used by several rules → a helper.</p>
+
 <h2>Language mechanics</h2>
 
 <div class="table-scroll">
@@ -164,6 +217,7 @@ preparing a session for coworkers, budget extra time for those.</p>
     <tr><td><code>contains</code> †</td><td>Makes a rule a partial set rule. <code>s contains x if b</code> reads "when <code>b</code> holds, <code>x</code> belongs to <code>s</code>".</td></tr>
     <tr><td><strong>Set</strong> †</td><td>Unordered collection, no duplicates. Rego's one type that JSON lacks — OPA serialises it as an array on output, which is a printing detail, not an ordering promise.</td></tr>
     <tr><td><code>in</code></td><td>Membership. <code>x in s</code> holds when <code>x</code> is a member of the collection <code>s</code>.</td></tr>
+    <tr><td><code>sprintf()</code></td><td>Builds a message string: <code>sprintf(format, values)</code> — exactly two arguments, the second an <em>array</em>. <code>%s</code> string, <code>%d</code> integer, <code>%v</code> anything.</td></tr>
     <tr><td><code>count()</code></td><td>Size of a collection. <code>count(deny) == 0</code> is the idiomatic "did it pass?".</td></tr>
     <tr><td><strong>Safety</strong></td><td>A compile-time guarantee: every variable must be bound by a non-negated expression somewhere. This is why <code>not</code> on an unbound variable is a compile error, not a runtime surprise.</td></tr>
     <tr><td><strong>Rego v1</strong> †</td><td>The current language version (OPA ≥ 1.0). <code>if</code> and <code>contains</code> are mandatory. Pre-2024 examples on the web are mostly v0 and will not parse.</td></tr>
@@ -213,6 +267,7 @@ top of the language — which is why the whole section fits in one table.</p>
     Document</a></li>
     <li><a href="../lessons/0002-many-rules-one-set.html">Lesson 2 — Many Rules, One Set</a></li>
     <li><a href="../lessons/0003-the-conftest-contract.html">Lesson 3 — The Conftest Contract</a></li>
+    <li><a href="../lessons/0004-and-down-or-sideways.html">Lesson 4 — AND Down, OR Sideways</a></li>
     <li><a href="0002-opa-cli-cheatsheet.html">Reference 2 — OPA CLI cheat sheet</a></li>
     <li><a href="0003-conftest-cheatsheet.html">Reference 3 — Conftest cheat sheet</a></li>
   </ul>

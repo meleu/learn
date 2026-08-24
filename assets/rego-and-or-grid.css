@@ -1,0 +1,88 @@
+/* rego-and-or-grid.css — Shows Rego's two-operator logic visually: expressions stacked inside a rule body are joined by AND (reading down), and repeated rule definitions are joined by OR (reading across). Wraps to a vertical stack on narrow screens. Pairs with base.css. */
+
+.andor {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 1.8rem 0;
+  font-family: var(--mono);
+}
+
+.andor .rule {
+  flex: 1 1 15rem;
+  min-width: 0;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper-sunk);
+  padding: 0.55rem 0.7rem 0.65rem;
+}
+
+.andor .rule .head,
+.andor .rule .foot {
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+/* the whole body scrolls as one unit: a marker in the gutter of an individual
+   scrolling <li> would be clipped on its left edge and unreachable */
+.andor .rule ul.body {
+  list-style: none;
+  margin: 0.35rem 0;
+  padding: 0 0 0 0.9rem;
+  border-left: 2px solid var(--rule);
+  overflow-x: auto;
+}
+
+.andor .rule ul.body li {
+  font-size: 0.74rem;
+  line-height: 1.45;
+  margin: 0;
+  padding: 0.22rem 0;
+  white-space: nowrap;
+}
+
+/* the implicit AND between two expressions of one body */
+.andor .rule ul.body li + li::before {
+  content: "and";
+  display: block;
+  font-family: var(--sans);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0.1rem 0 0.22rem;
+}
+
+/* the explicit OR between two rule definitions */
+.andor .or {
+  align-self: center;
+  flex: 0 0 auto;
+  font-family: var(--sans);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  background: var(--paper);
+}
+
+.andor figcaption,
+.andor + figcaption {
+  font-family: var(--sans);
+}
+
+@media (max-width: 42rem) {
+  .andor { flex-direction: column; align-items: stretch; }
+  .andor .or { align-self: center; }
+}
+
+@media print {
+  .andor .rule { break-inside: avoid; }
+}
