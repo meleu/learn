@@ -52,20 +52,11 @@ conftest, so items 3–5 below were deferred past the wrapper.
 
 ## Open threads to check on next session
 
-- **Still unanswered from lesson 2**: drill step 7 asked for a fourth rule with no snippet given
-  (report a missing `age`; expected `violations contains "age is required" if not input.age`).
-  Ask how it went — it was their first unassisted authoring here, and lesson 3's drill step 10
-  now asks for two more unassisted rules, so this is a trend worth tracking.
-- Lesson 2's `ask-teacher` box dangles four questions: set vs array, mixing `contains` and `:=`
-  on one key, why a multi-line body needs no `and`, and how to word a good message. The third is
-  now backlog item 4.
-- Lesson 3 drill step 10 expects, roughly:
-  `deny contains "Deployment must have an app label" if not input.metadata.labels.app` and
-  `deny contains "Deployment must declare a namespace" if not input.metadata.namespace`.
-  Both verified locally. The second one is the point — it is the fix for trap A.
-- No learning record yet for the *content* of lessons 2 or 3 — coverage is not learning. LR-0004
-  records the sequencing decision, not evidence of understanding. Write one once the user gives
-  evidence (drill results, a question that shows the model landed, or a correction).
+- Nothing outstanding from lessons 1–3. Evidence gathered session 3; LR-0005 (lesson 2 content)
+  and LR-0006 (lesson 3 content) close this thread.
+- Carry forward into later lessons, not now: sharpen set-vs-array at the iteration lesson
+  (LR-0005), and fold `--fail-on-warn`'s exit-code renumbering and `--all-namespaces`'s limits
+  into the CI lesson (LR-0006). Reference 3 already carries both facts.
 
 ## Verified format quirks (for future lessons)
 
@@ -88,6 +79,13 @@ throwaway code in examples.** Every line in a lesson policy must earn its place,
 there for a pedagogical reason that is not obvious from the code, say so in the prose. Redundancy
 in an example will be read as a mistake, and reasonably so — the user is going to hand these
 policies to coworkers as models of what good Rego looks like.
+
+**Session 3 addition: they probe the flag surface past the drill.** Lesson 3's drill asked for two
+extra rules; they wrote five, and deliberately left the drill policy in `package
+kubernetes.deployment` in order to exercise `--all-namespaces` rather than to avoid the `0 tests`
+trap. They also went and tested `--fail-on-warn` unprompted. Consequence: state a flag's exact
+behaviour or leave it out — a lesson that name-drops a flag without saying what it does creates
+homework. Drills can safely ask for less than they will actually do.
 
 ## Conftest facts (all verified locally, sessions 1–2)
 
@@ -123,6 +121,14 @@ Everything below was run on this machine and is already baked into lesson 3 / re
   jsonnet, nginx, properties, spdx, textproto, toml, vcl, xml, yaml.
 - `conftest parse FILE` prints the JSON a policy will see. The command that makes any new format
   tractable.
+- **`--all-namespaces`** queries every package found, so a non-`main` package runs normally. It
+  cures a wrong *package* name only: a policy dir whose rules are named something other than
+  `deny`/`violation`/`warn` still prints `0 tests, 0 passed` and exits 0 under it. Verified
+  session 3 — so the TAP guard stays.
+- **`--fail-on-warn` renumbers the exit codes, it does not just add a case.** Verified all four
+  combinations session 3: without it, warn-only → 0 and failures → 1; with it, warn-only → **1**
+  and failures → **2**. Any CI step keying on `== 1` silently changes meaning when someone adds
+  the flag. Reference 3's exit-code table and a callout now carry this.
 
 ## the user's own conventions
 

@@ -79,7 +79,7 @@ conftest test --parser xml pom.xml</code></pre>
   <tbody>
     <tr><td><code>-p</code>, <code>--policy</code></td><td>Policy directory. Default <code>policy</code>. Repeatable.</td></tr>
     <tr><td><code>-n</code>, <code>--namespace</code></td><td>Package to query. Default <code>main</code>. Supports globs: <code>-n 'k8s.*'</code>.</td></tr>
-    <tr><td><code>--all-namespaces</code></td><td>Query every package found. The escape hatch when <code>0 tests</code> surprises you.</td></tr>
+    <tr><td><code>--all-namespaces</code></td><td>Query every package found. The escape hatch when <code>0 tests</code> surprises you — cures a wrong package name, but not a wrong <em>rule</em> name.</td></tr>
     <tr><td><code>--fail-on-warn</code></td><td>Exit 1 for warnings too. Turns <code>warn</code> into a blocking gate.</td></tr>
     <tr><td><code>--no-fail</code></td><td>Always exit 0. For reporting-only pipeline stages.</td></tr>
     <tr><td><code>-o</code>, <code>--output</code></td><td><code>stdout</code> (default), <code>json</code>, <code>tap</code>, <code>table</code>, <code>junit</code>, <code>github</code>, <code>azuredevops</code>, <code>sarif</code>.</td></tr>
@@ -123,13 +123,22 @@ precisely because of the trap below.</figcaption>
   <tbody>
     <tr><td>No failures</td><td><code>0</code></td></tr>
     <tr><td>Warnings only</td><td><code>0</code> — or <code>1</code> with <code>--fail-on-warn</code></td></tr>
-    <tr><td>Any <code>deny</code>/<code>violation</code> fired</td><td><code>1</code></td></tr>
+    <tr><td>Any <code>deny</code>/<code>violation</code> fired</td><td><code>1</code> — but <code>2</code> with <code>--fail-on-warn</code></td></tr>
     <tr><td>No rules found (<code>0 tests</code>) †</td><td><code>0</code> — the dangerous one</td></tr>
     <tr><td>Policy dir missing or empty</td><td><code>1</code>, with an <code>Error:</code> on stderr</td></tr>
     <tr><td>Rego syntax error</td><td><code>1</code>, with <code>rego_parse_error</code></td></tr>
     <tr><td>Anything, with <code>--no-fail</code></td><td><code>0</code></td></tr>
   </tbody>
 </table>
+</div>
+
+<div class="callout">
+  <p><strong><code>--fail-on-warn</code> renumbers everything, it does not just add a case.</strong>
+  Without it: warnings <code>0</code>, failures <code>1</code>. With it: warnings <code>1</code>,
+  failures <code>2</code>. So a pipeline step that reads <code>exit 1</code> as &ldquo;the policy
+  denied something&rdquo; starts meaning &ldquo;the policy warned about something&rdquo; the day
+  somebody adds the flag, and real denials become the code nothing is checking for. Key CI on the
+  report, not on <code>== 1</code>.</p>
 </div>
 
 <h2>The two silent passes †</h2>
@@ -150,8 +159,12 @@ precisely because of the trap below.</figcaption>
 <h2>Making CI reject <code>0 tests</code> †</h2>
 
 <p class="note">There is <strong>no built-in flag</strong> for this. <code>--strict</code> is
-Rego's compiler strictness, not this; <code>--fail-on-warn</code> only promotes warnings. You have
-to add the check yourself. Both recipes below were verified on this machine against six cases:
+Rego's compiler strictness, not this; <code>--fail-on-warn</code> only promotes warnings.
+<code>--all-namespaces</code> is the nearest thing and it is <em>not</em> a substitute: it cures a
+wrong package name, but a policy whose rules are named anything other than
+<code>deny</code>/<code>violation</code>/<code>warn</code> still reports <code>0 tests</code> and
+exits 0 under it. Verified. So the two are complements — run with
+<code>--all-namespaces</code> if you like, and still add the check yourself. Both recipes below were verified on this machine against six cases:
 violating file, clean file, wrong package, empty policy dir, missing policy dir, and a Rego syntax
 error.</p>
 
