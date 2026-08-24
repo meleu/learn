@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · Conftest Cheat Sheet</title>
+<link rel="stylesheet" href="../../assets/base.css">
+</head>
+<body>
+<main class="sheet">
+
+<header class="masthead">
+  <p class="eyebrow">Rego &amp; Conftest · Reference 3</p>
+  <h1>Conftest Cheat Sheet</h1>
+  <p class="standfirst">The contract, the flags, the exit codes. Verified against conftest
+  (dev build, OPA 1.19.0) on this machine.</p>
+</header>
+
+<div class="key-idea">
+  <p>Conftest adds no language. It <strong>parses a file into <code>input</code></strong>, runs
+  your Rego, reads <code>data.&lt;namespace&gt;.deny</code> and <code>.warn</code>, and turns the
+  result into an exit code. Everything below is that sentence in detail.</p>
+</div>
+
+<h2>The contract</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Convention</th><th>Default</th><th>Override</th></tr></thead>
+  <tbody>
+    <tr><td>Policy location</td><td><code>./policy/</code>, searched recursively</td><td><code>-p</code>, <code>--policy</code></td></tr>
+    <tr><td>Package (the <em>namespace</em>) †</td><td><code>main</code></td><td><code>-n</code>, <code>--namespace</code>; <code>--all-namespaces</code></td></tr>
+    <tr><td>Failing rule names</td><td><code>deny</code>, <code>violation</code></td><td>none; <code>_suffix</code> allowed (<code>deny_replicas</code>)</td></tr>
+    <tr><td>Non-failing rule name</td><td><code>warn</code></td><td><code>--fail-on-warn</code> makes it fail</td></tr>
+    <tr><td>What <code>input</code> is</td><td>one parsed document, evaluated alone</td><td><code>--combine</code> (see below — it changes <code>input</code>'s shape)</td></tr>
+    <tr><td>Message type</td><td>a string in the set</td><td>an object with a <code>msg</code> key</td></tr>
+  </tbody>
+</table>
+</div>
+
+<figure>
+  <p class="code-label">The minimum viable policy</p>
+<pre><code class="lang-rego">package main
+
+deny contains "Deployment must have at least 2 replicas" if input.spec.replicas &lt; 2</code></pre>
+<figcaption><code>policy/whatever.rego</code>. The filename is irrelevant; the package is not.</figcaption>
+</figure>
+
+<h2>Commands</h2>
+
+<figure>
+<pre><code class="lang-shell"># the whole job: policy/ + package main + deny/warn
+conftest test deployment.yaml
+
+# what does `input` actually look like? run this FIRST, every new format
+conftest parse deployment.yaml
+
+# a directory of configs
+conftest test manifests/
+
+# somewhere other than policy/, some package other than main
+conftest test -p policies/ -n kubernetes.deployment deployment.yaml
+
+# every package found, whatever it is called
+conftest test --all-namespaces deployment.yaml
+
+# force a parser when the extension lies (or there isn't one)
+conftest parse --parser dockerfile Dockerfile
+conftest test --parser xml pom.xml</code></pre>
+</figure>
+
+<h2>Flags worth knowing</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Flag</th><th>Does</th></tr></thead>
+  <tbody>
+    <tr><td><code>-p</code>, <code>--policy</code></td><td>Policy directory. Default <code>policy</code>. Repeatable.</td></tr>
+    <tr><td><code>-n</code>, <code>--namespace</code></td><td>Package to query. Default <code>main</code>. Supports globs: <code>-n 'k8s.*'</code>.</td></tr>
+    <tr><td><code>--all-namespaces</code></td><td>Query every package found. The escape hatch when <code>0 tests</code> surprises you.</td></tr>
+    <tr><td><code>--fail-on-warn</code></td><td>Exit 1 for warnings too. Turns <code>warn</code> into a blocking gate.</td></tr>
+    <tr><td><code>--no-fail</code></td><td>Always exit 0. For reporting-only pipeline stages.</td></tr>
+    <tr><td><code>-o</code>, <code>--output</code></td><td><code>stdout</code> (default), <code>json</code>, <code>tap</code>, <code>table</code>, <code>junit</code>, <code>github</code>, <code>azuredevops</code>, <code>sarif</code>.</td></tr>
+    <tr><td><code>--parser</code></td><td>Override format detection. See the parser list below.</td></tr>
+    <tr><td><code>--combine</code></td><td>Pass <em>all</em> documents at once, as an array of <code>{"path", "contents"}</code> objects. <strong>Rewrites <code>input</code></strong> — rules written for single documents will not match.</td></tr>
+    <tr><td><code>--data</code></td><td>Load JSON/YAML as <code>data.*</code> — the mechanism behind exception lists.</td></tr>
+    <tr><td><code>--trace</code></td><td>Full evaluation trace on stderr. The conftest version of <code>opa eval --explain full</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Reading the report</h2>
+
+<figure>
+<pre><code class="lang-shell">WARN - deployment.yaml - main - Deployment is missing the owner label
+FAIL - deployment.yaml - main - Deployment must have at least 2 replicas
+
+3 tests, 0 passed, 1 warning, 2 failures, 0 exceptions</code></pre>
+<figcaption>Columns are <em>file · namespace · message</em>. The namespace column is there
+precisely because of the trap below.</figcaption>
+</figure>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>You see</th><th>It means</th></tr></thead>
+  <tbody>
+    <tr><td><code>N tests</code></td><td><strong>Rule evaluations</strong>: rules × parsed documents. Not files, not assertions.</td></tr>
+    <tr><td><code>0 tests</code> †</td><td>No rules were found at that address. Wrong package, wrong <code>-p</code>, or an empty policy directory. <strong>Exits 0.</strong></td></tr>
+    <tr><td><code>N passed</code></td><td>Rules that contributed no member. Includes rules whose key was undefined — see the silent pass.</td></tr>
+    <tr><td><code>1 warning</code></td><td>A <code>warn</code> rule fired. Does not affect the exit code without <code>--fail-on-warn</code>.</td></tr>
+    <tr><td><code>0 exceptions</code></td><td>Denials suppressed by an <code>exception</code> rule; those lines print as <code>EXCP</code>. An exception names a rule <em>suffix</em>, so <code>["replicas"]</code> excepts <code>deny_replicas</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Exit codes</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Situation</th><th>Exit</th></tr></thead>
+  <tbody>
+    <tr><td>No failures</td><td><code>0</code></td></tr>
+    <tr><td>Warnings only</td><td><code>0</code> — or <code>1</code> with <code>--fail-on-warn</code></td></tr>
+    <tr><td>Any <code>deny</code>/<code>violation</code> fired</td><td><code>1</code></td></tr>
+    <tr><td>No rules found (<code>0 tests</code>) †</td><td><code>0</code> — the dangerous one</td></tr>
+    <tr><td>Anything, with <code>--no-fail</code></td><td><code>0</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>The two silent passes †</h2>
+
+<div class="callout warn">
+  <p class="callout-title">Both look like a green pipeline</p>
+  <p><strong>A · The key is absent.</strong> <code>input.metadata.namespace</code> on a manifest
+  with no <code>namespace:</code> is undefined, so the body cannot hold, so the rule contributes
+  nothing — reported as <em>passed</em>. If absence matters, write the <code>not</code> rule too.</p>
+  <p><strong>B · The package is not <code>main</code>.</strong> Conftest queries
+  <code>data.main.deny</code> and finds nothing there. Reported as <code>0 tests, 0 passed</code>,
+  exit 0. <strong>The count is the tell</strong> — make CI reject <code>0 tests</code>.</p>
+</div>
+
+<figure>
+  <p class="code-label">A CI guard for trap B</p>
+<pre><code class="lang-shell">#!/usr/bin/env bash
+# run the gate, keeping both the report and conftest's own verdict
+conftest test -o json "$@" &gt; report.json; RC=$?
+
+# a run that evaluated nothing is a broken gate, not a passing one
+jq -e '[.[] | .successes + ((.warnings//[]) | length) + ((.failures//[]) | length)] | add &gt; 0' \
+  report.json &gt; /dev/null || { echo "conftest evaluated no rules"; exit 1; }
+
+exit $RC</code></pre>
+<figcaption>Verified on this machine against all three cases: violations exit 1, a clean file exits
+0, and a mismatched package exits 1 with the message. Note that <code>-o json</code> still reports
+<code>"successes": 0</code> when nothing ran, so testing for the field's <em>presence</em> would
+not catch it — you have to add the numbers up.</figcaption>
+</figure>
+
+<h2>Parsers available in this build</h2>
+
+<p>Detected from the file extension, or forced with <code>--parser</code>.</p>
+
+<p class="note"><code>cue</code> · <code>dockerfile</code> · <code>dotenv</code> · <code>edn</code>
+· <code>hcl1</code> · <code>hcl2</code> · <code>hocon</code> · <code>ignore</code> ·
+<code>ini</code> · <code>json</code> · <code>jsonnet</code> · <code>nginx</code> ·
+<code>properties</code> · <code>spdx</code> · <code>textproto</code> · <code>toml</code> ·
+<code>vcl</code> · <code>xml</code> · <code>yaml</code></p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Format</th><th>Shape of <code>input</code></th></tr></thead>
+  <tbody>
+    <tr><td>YAML / JSON</td><td>The document as an object. Multi-document YAML gives <strong>one <code>input</code> per document</strong>.</td></tr>
+    <tr><td>Dockerfile †</td><td>An <em>array</em> of instruction objects with keys <code>Cmd</code>, <code>Value</code>, <code>Flags</code>, <code>Stage</code>, <code>SubCmd</code>. <code>Cmd</code> is lowercased (<code>"from"</code>, <code>"user"</code>). Rules must iterate, not address fields.</td></tr>
+    <tr><td>XML / <code>pom.xml</code> †</td><td>Nested objects; attribute-free elements collapse to strings. <strong>Gotcha:</strong> one <code>&lt;dependency&gt;</code> becomes an object, two or more become an array.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p class="note">When a format is not in this table, do not guess — <code>conftest parse</code> it and
+read the JSON. That command is what makes any unfamiliar format tractable.</p>
+
+<footer class="colophon">
+  <h3>Sources</h3>
+  <ul>
+    <li><a href="https://www.conftest.dev/">Conftest documentation</a> — the rule naming rule, the
+    default <code>policy</code> directory, the default <code>main</code> namespace.</li>
+    <li><a href="https://www.conftest.dev/options/">Conftest — Options</a> and
+    <code>conftest test --help</code> on this machine — flag names, defaults, parser list.</li>
+    <li>Exit codes, report counts and the two silent passes were verified locally against conftest
+    (dev build, OPA 1.19.0); the docs are silent on <code>warn</code>'s exit-code behaviour.</li>
+  </ul>
+  <h3>Related</h3>
+  <ul>
+    <li><a href="../lessons/0003-the-conftest-contract.html">Lesson 3 — The Conftest Contract</a></li>
+    <li><a href="0002-opa-cli-cheatsheet.html">Reference 2 — OPA CLI cheat sheet</a></li>
+    <li><a href="0001-glossary.html">Reference 1 — Glossary</a></li>
+  </ul>
+  <div class="ask-teacher">
+    <strong>Something here that did not survive contact with your real repo?</strong> Tell me in
+    the session and I will amend it — this page is meant to be trustworthy enough to hand a
+    coworker.
+  </div>
+</footer>
+
+</main>
+<script src="../../assets/syntax-highlight-rego.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>

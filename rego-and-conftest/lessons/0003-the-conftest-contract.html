@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 3 · The Conftest Contract</title>
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" href="../../assets/flow-boxes.css">
+</head>
+<body>
+<main class="sheet">
+
+<p class="crumb"><a href="../index.html">↑ Course index</a></p>
+
+<header class="masthead">
+  <p class="eyebrow">Rego &amp; Conftest · Lesson 3</p>
+  <h1>The Conftest Contract</h1>
+  <p class="standfirst">Conftest adds no language. Everything it runs is the Rego you already
+  know from <a href="0002-many-rules-one-set.html">lesson 2</a>. What it adds is <strong>four
+  conventions</strong> — and a policy that breaks any one of them fails silently, by passing.</p>
+</header>
+
+<div class="callout good">
+  <p class="callout-title">Your win for this lesson</p>
+  <p>By the end you can write a real conftest policy for a Kubernetes Deployment, read its output
+  precisely enough to know what was counted, and recognise the two ways conftest reports success
+  on a file it should have rejected.</p>
+</div>
+
+<h2>1 · First, your file becomes <code>input</code></h2>
+
+<p>Start from the file you would actually be checking at work.</p>
+
+<figure>
+  <p class="code-label">deployment.yaml</p>
+<pre><code class="lang-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+  namespace: default
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27</code></pre>
+</figure>
+
+<p>Rego does not read YAML. So the first thing conftest does is turn that file into the JSON
+document your rules will address — and it will show you exactly what it produced:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest parse deployment.yaml</code></pre>
+<pre><code class="lang-json">{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {
+    "name": "hello",
+    "namespace": "default"
+  },
+  "spec": {
+    "replicas": 1,
+    "template": { "spec": { "containers": [ { "image": "nginx:1.27", "name": "app" } ] } }
+  }
+}</code></pre>
+<figcaption>Verified output, conftest dev build (OPA 1.19.0). Nested objects abbreviated onto one
+line here for space; the real output is fully expanded.</figcaption>
+</figure>
+
+<div class="key-idea">
+  <p><code>conftest parse</code> is the most useful command in the tool. It answers the only
+  question that matters when you start writing rules for an unfamiliar file: <strong>what does
+  <code>input</code> actually look like?</strong> Never guess a path — parse first.</p>
+</div>
+
+<p>That JSON becomes <code>input</code>. Your rules build a document from it, exactly as in
+lesson 2. Then conftest reads two keys out of that document — and nothing else.</p>
+
+<div class="flow">
+  <div class="box">
+    <div class="t">config file</div>
+    <div class="d">YAML, Dockerfile,<br>XML, INI…</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="box">
+    <div class="t"><code>input</code></div>
+    <div class="d">parsed JSON,<br>one document</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="box policy">
+    <div class="t">your rules</div>
+    <div class="d">build the<br>document</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="box">
+    <div class="t"><code>deny</code>, <code>warn</code></div>
+    <div class="d">read out,<br>mapped to exit code</div>
+  </div>
+</div>
+
+<p>That is the whole of it. Once you have written a policy we will run conftest's query by hand
+with <code>opa eval</code> and get the identical result, which is the proof that no new language
+is involved — but the policy has to exist first.</p>
+
+<h2>2 · The four conventions</h2>
+
+<p>Because conftest has to find your rules without being told where they are, it fixes four things
+by convention. Each has a flag that overrides it, and each is a way to fail silently if you get
+it wrong.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Convention</th><th>Default</th><th>Override</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Where the policy lives</strong></td>
+      <td>a directory named <code>policy/</code>, searched recursively</td>
+      <td><code>-p</code>, <code>--policy</code></td>
+    </tr>
+    <tr>
+      <td><strong>Which package it declares</strong> †</td>
+      <td><code>package main</code> — conftest calls this the <em>namespace</em></td>
+      <td><code>-n</code>, <code>--namespace</code>, <code>--all-namespaces</code></td>
+    </tr>
+    <tr>
+      <td><strong>What the rule is called</strong></td>
+      <td><code>deny</code>, <code>violation</code> (a synonym), <code>warn</code></td>
+      <td>none — but a <code>_suffix</code> is allowed: <code>deny_replicas</code></td>
+    </tr>
+    <tr>
+      <td><strong>What <code>input</code> is</strong></td>
+      <td>one parsed document, evaluated on its own</td>
+      <td><code>--combine</code> (a later lesson)</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>The docs state the first three plainly: <a href="https://www.conftest.dev/">"Conftest looks for
+<code>deny</code>, <code>violation</code>, and <code>warn</code> rules. Rules can optionally be
+suffixed with an underscore and an identifier, for example <code>deny_myrule</code>"</a><a
+href="#src-1">¹</a>; policies <a href="https://www.conftest.dev/">"by default should be placed in a
+directory called <code>policy</code>"</a><a href="#src-1">¹</a>; and <a
+href="https://www.conftest.dev/">"by default, Conftest looks for these rules in the
+<code>main</code> namespace"</a><a href="#src-1">¹</a>.</p>
+
+<div class="callout">
+  <p class="callout-title">The sentence to put on the whiteboard</p>
+  <p>Conftest is not a policy engine. It is a <strong>file reader and an exit code</strong>
+  wrapped around <code>opa eval</code>, plus an agreement about what your rules are called.</p>
+  <p>Everything your coworkers need to learn to <em>write</em> policies is Rego. Everything they
+  need to learn to <em>run</em> them is the table above.</p>
+</div>
+
+<h2>3 · A Deployment policy</h2>
+
+<p>Three rules, in <code>policy/deployment.rego</code>. There is nothing here you have not seen:
+each is a partial set rule with a one-expression body.</p>
+
+<figure>
+  <p class="code-label">policy/deployment.rego</p>
+<pre><code class="lang-rego">package main
+
+deny contains "Deployment must not run in the default namespace" if input.metadata.namespace == "default"
+
+deny contains "Deployment must have at least 2 replicas" if input.spec.replicas &lt; 2
+
+warn contains "Deployment is missing the owner label" if not input.metadata.labels.owner</code></pre>
+</figure>
+
+<p>Line by line, in the vocabulary you already have:</p>
+
+<ul>
+  <li><code>package main</code> — convention 2. Not a description of the file; the <em>address</em>
+  conftest will look at.</li>
+  <li><code>deny contains "…"</code> — a partial set rule whose member is a literal string. The
+  message <em>is</em> the member.</li>
+  <li><code>not input.metadata.labels.owner</code> — lesson 2's absence check, on a nested path.
+  It holds when any link in that chain is missing.</li>
+</ul>
+
+<div class="callout warn">
+  <p class="callout-title">One thing this policy does not do</p>
+  <p>Nothing here checks <code>input.kind == "Deployment"</code>. The policy assumes every file it
+  is handed is a Deployment — hand it a Service and the replicas rule quietly contributes nothing.
+  That is fine for today (the point is the contract, not the rule set), but a real repository mixes
+  kinds in one directory, so a production policy opens with a <code>kind</code> guard. Guarding
+  needs a two-expression body, which is the next lesson.</p>
+</div>
+
+<h2>4 · Run it, and read the count carefully</h2>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test deployment.yaml
+WARN - deployment.yaml - main - Deployment is missing the owner label
+FAIL - deployment.yaml - main - Deployment must have at least 2 replicas
+FAIL - deployment.yaml - main - Deployment must not run in the default namespace
+
+3 tests, 0 passed, 1 warning, 2 failures, 0 exceptions
+$ echo $?
+1</code></pre>
+<figcaption>Verified output. Each line is <em>file · namespace · message</em> — the namespace is
+printed on every line, which is worth knowing before you meet section 6.</figcaption>
+</figure>
+
+<p><strong>"3 tests" is three rules, not three files.</strong> Conftest counts rule evaluations:
+three rules against one document. Give it a two-document YAML and the same policy reports six:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test multi.yaml
+...
+6 tests, 3 passed, 1 warning, 2 failures, 0 exceptions</code></pre>
+<figcaption>Verified output, a file with two Deployments separated by <code>---</code>. Three rules
+× two documents.</figcaption>
+</figure>
+
+<p>That is convention 4 made visible: each YAML document is its own <code>input</code>, evaluated
+independently. Your rules never see the file as a whole, and never see two documents at once — so
+a rule cannot say "this Deployment needs a matching Service". (That is what <code>--combine</code>
+is for, later.)</p>
+
+<p>If you want to see the query conftest ran, ask for JSON — it tells you outright:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test -o json deployment.yaml</code></pre>
+<pre><code class="lang-json">"failures": [
+  {
+    "msg": "Deployment must have at least 2 replicas",
+    "metadata": { "query": "data.main.deny" }
+  }
+]</code></pre>
+<figcaption>Verified output, abridged. <code>data.main.deny</code> — the four conventions,
+concatenated into one path.</figcaption>
+</figure>
+
+<h3>No magic: run that query yourself</h3>
+
+<p><code>data.main.deny</code> is an address you already know how to visit. Parse the file, hand
+the JSON to <code>opa</code>, and print the document your three rules built — this is conftest's
+entire job, done with the lesson-2 toolchain:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest parse deployment.yaml &gt; deployment.json
+$ opa eval -d policy/deployment.rego -i deployment.json 'data.main' --format pretty</code></pre>
+<pre><code class="lang-json">{
+  "deny": [
+    "Deployment must have at least 2 replicas",
+    "Deployment must not run in the default namespace"
+  ],
+  "warn": [
+    "Deployment is missing the owner label"
+  ]
+}</code></pre>
+<figcaption>Verified output. Two partial set rules, exactly the shape of lesson 2 — only the key
+names have changed.</figcaption>
+</figure>
+
+<p class="note">If that output looks familiar it should: it is lesson 2's <code>violations</code>
+set, renamed. Everything conftest added was the decision to look for it at
+<code>data.main.deny</code> and to exit 1 when it is not empty.</p>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q"><code>conftest test</code> reports <code>3 tests</code> for a single file.
+  What was counted?</p>
+  <ul class="quiz-options">
+    <li data-correct>Rules found in that namespace</li>
+    <li>Fields checked in that document</li>
+    <li>Errors raised during that run</li>
+    <li>Lines of Rego in policy</li>
+  </ul>
+  <div class="quiz-explain">Conftest counts rule evaluations — every <code>deny</code> and
+  <code>warn</code> rule in the namespace, once per parsed document. Three rules against two
+  documents reports six.</div>
+</div>
+
+<h2>5 · <code>deny</code> and <code>warn</code> differ in exactly one thing</h2>
+
+<p>Fix the namespace and the replicas but leave the label off, and only the <code>warn</code> rule
+fires:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test warnonly.yaml
+WARN - warnonly.yaml - main - Deployment is missing the owner label
+
+3 tests, 2 passed, 1 warning, 0 failures, 0 exceptions
+$ echo $?
+0</code></pre>
+<figcaption>Verified output. A warning is reported and the run still succeeds.</figcaption>
+</figure>
+
+<p>Same Rego, same set, same evaluation. The <em>only</em> difference between <code>deny</code>
+and <code>warn</code> is which one conftest turns into a non-zero exit code — which is to say, the
+only difference is whether the rule blocks a merge. And even that is a caller's choice:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test --fail-on-warn warnonly.yaml
+...
+3 tests, 2 passed, 1 warning, 0 failures, 0 exceptions
+$ echo $?
+1</code></pre>
+<figcaption>Verified output. Identical report, different exit code.</figcaption>
+</figure>
+
+<div class="key-idea">
+  <p>Lesson 1's decision-versus-enforcement split, now with a name attached.
+  <code>deny</code> and <code>warn</code> are two <em>decisions</em> your policy publishes.
+  Turning a decision into "this merge is blocked" is done by conftest's exit code and the flags
+  the pipeline passes — not by the rule.</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">A file triggers one <code>warn</code> and no <code>deny</code>. What exit code
+  does <code>conftest test</code> return?</p>
+  <ul class="quiz-options">
+    <li data-correct>Zero, because warnings never fail</li>
+    <li>One, because warnings always fail</li>
+    <li>Zero, unless the rule matched</li>
+    <li>One, unless the file parsed</li>
+  </ul>
+  <div class="quiz-explain">Warnings are reported and ignored by the exit code, so a pipeline
+  keeps going. Pass <code>--fail-on-warn</code> if you want them to block instead.</div>
+</div>
+
+<h2>6 · Two ways to pass a file you should have failed</h2>
+
+<p>This is the section to remember, and the one to walk your coworkers through. Both failures look
+identical from the outside: <strong>exit 0, green pipeline, broken config shipped.</strong></p>
+
+<h3>Trap A — the key isn't there</h3>
+
+<p>Kubernetes lets you omit <code>namespace:</code> from a manifest. Delete that one line from the
+failing Deployment and give conftest everything else it wanted:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test no-namespace.yaml
+
+3 tests, 3 passed, 0 warnings, 0 failures, 0 exceptions
+$ echo $?
+0</code></pre>
+<figcaption>Verified output. A manifest with no namespace at all, passed by a policy whose entire
+job is checking the namespace.</figcaption>
+</figure>
+
+<p>You met this in lesson 2 and here it is wearing work clothes. <code>input.metadata.namespace</code>
+is undefined, so the comparison is undefined, so the body does not hold, so the rule contributes
+no member — and contributing nothing is indistinguishable from finding nothing wrong. Worse: a
+manifest with no namespace <em>does</em> land in <code>default</code> when applied, so this is a
+real violation the policy waved through.</p>
+
+<h3>Trap B — the package isn't <code>main</code></h3>
+
+<p>Now rename the package to something more descriptive, which is exactly what a careful person
+does when the policy directory starts filling up:</p>
+
+<figure>
+<pre><code class="lang-rego">package kubernetes.deployment</code></pre>
+</figure>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test deployment.yaml
+
+0 tests, 0 passed, 0 warnings, 0 failures, 0 exceptions
+$ echo $?
+0</code></pre>
+<figcaption>Verified output, against the original violating file. Nothing ran.</figcaption>
+</figure>
+
+<p>Conftest queried <code>data.main.deny</code>, found nothing at that address, and correctly
+reported that no rules had anything to say. The policy is fine. The rules are fine. They were
+never asked.</p>
+
+<div class="callout warn">
+  <p class="callout-title">Flag this one for your coworkers</p>
+  <p><strong>The tell is <code>0 tests</code>.</strong> A passing run reports the number of rules
+  it evaluated; a run that found no rules reports zero and exits 0 just the same. Teach people to
+  read the count, not the colour. Any CI job running conftest should fail on <code>0 tests</code>,
+  because that number means the gate was never closed.</p>
+</div>
+
+<p>Two ways out, both fine:</p>
+
+<figure>
+<pre><code class="lang-shell"># name the namespace you used
+$ conftest test -n kubernetes.deployment deployment.yaml
+
+# or run every namespace found in the policy directory
+$ conftest test --all-namespaces deployment.yaml
+WARN - deployment.yaml - kubernetes.deployment - Deployment is missing the owner label
+FAIL - deployment.yaml - kubernetes.deployment - Deployment must have at least 2 replicas
+FAIL - deployment.yaml - kubernetes.deployment - Deployment must not run in the default namespace
+
+3 tests, 0 passed, 1 warning, 2 failures, 0 exceptions</code></pre>
+<figcaption>Verified output. Note the third column — that is why conftest prints the namespace on
+every line.</figcaption>
+</figure>
+
+<p>Until you have a reason to split namespaces, <code>package main</code> everywhere is the
+boring, correct answer.</p>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">Your policy declares <code>package kubernetes</code>. You run
+  <code>conftest test deploy.yaml</code> with no flags. What happens?</p>
+  <ul class="quiz-options">
+    <li data-correct>Nothing is tested and it passes</li>
+    <li>Every rule runs and it passes</li>
+    <li>Nothing is tested and it fails</li>
+    <li>Every rule runs and it fails</li>
+  </ul>
+  <div class="quiz-explain">Conftest looks only at <code>data.main</code> unless told otherwise.
+  It finds no rules there, reports <code>0 tests</code> and exits 0 — the most dangerous green
+  you will see.</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">The Deployment YAML has no <code>namespace:</code> key at all. The namespace
+  rule…</p>
+  <ul class="quiz-options">
+    <li data-correct>adds nothing, so the file passes</li>
+    <li>adds its message, so it fails</li>
+    <li>raises an error about the key</li>
+    <li>adds nothing, so the run errors</li>
+  </ul>
+  <div class="quiz-explain">An absent key makes the comparison undefined, the body cannot hold,
+  and the rule contributes no member. If absence matters — and here it does — write the
+  <code>not</code> rule for it as well.</div>
+</div>
+
+<div class="recall" data-recall="Answer from memory before revealing">
+  <p class="recall-q">A coworker messages you: "I wrote a deny rule, the config definitely breaks
+  it, but conftest says <code>0 tests, 0 passed</code> and exits 0. Is conftest broken?" Diagnose
+  it in three sentences, and say how they should have caught it.</p>
+  <div class="recall-answer">
+    <p>Conftest only queries <code>data.main.deny</code> by default, so a policy declaring any
+    other package is never looked at — <code>0 tests</code> means "no rules found at that address",
+    not "no problems found". Either rename the package to <code>main</code> or pass
+    <code>-n &lt;their-package&gt;</code>.</p>
+    <p>The habit that catches it: read the count on every run, and make CI reject
+    <code>0 tests</code> outright.</p>
+    <p>If your answer began with the policy directory rather than the package, that is the other
+    half of the same trap — an empty or misnamed <code>policy/</code> produces exactly the same
+    <code>0 tests</code>.</p>
+  </div>
+</div>
+
+<h2>Terminal drill</h2>
+
+<p>Twelve minutes. Steps 6 and 7 are the ones that matter — they are the two silent passes, and
+you want to have caused them both yourself before a coworker causes one for you.</p>
+
+<ol class="drill" data-drill="rego-0003">
+  <li>
+    <p>New exercise directory, with the policy directory conftest expects. Run from the workspace
+    root.</p>
+<pre><code class="lang-shell">mkdir -p exercises/003/policy &amp;&amp; cd exercises/003</code></pre>
+  </li>
+  <li>
+    <p>A Deployment that breaks all three rules.</p>
+<pre><code class="lang-shell">cat &gt; deployment.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+  namespace: default
+spec:
+  replicas: 1
+EOF</code></pre>
+  </li>
+  <li>
+    <p><strong>Look before you write.</strong> Get in the habit of parsing first, every time you
+    meet a new file format.</p>
+<pre><code class="lang-shell">conftest parse deployment.yaml</code></pre>
+  </li>
+  <li>
+    <p>The policy. Type it — <code>package main</code> and <code>deny contains</code> are the two
+    things you want in your fingers.</p>
+<pre><code class="lang-shell">cat &gt; policy/deployment.rego &lt;&lt;'EOF'
+package main
+
+deny contains "Deployment must not run in the default namespace" if input.metadata.namespace == "default"
+
+deny contains "Deployment must have at least 2 replicas" if input.spec.replicas &lt; 2
+
+warn contains "Deployment is missing the owner label" if not input.metadata.labels.owner
+EOF
+
+conftest test deployment.yaml; echo "exit=$?"</code></pre>
+  </li>
+  <li>
+    <p><strong>Prove there is no magic.</strong> Do conftest's job with the lesson-2 toolchain and
+    confirm you get the same two sets.</p>
+<pre><code class="lang-shell">conftest parse deployment.yaml &gt; deployment.json
+opa eval -d policy/deployment.rego -i deployment.json 'data.main' --format pretty</code></pre>
+  </li>
+  <li>
+    <p><strong>Trap A.</strong> Delete the <code>namespace:</code> line, satisfy the other two
+    rules, and watch a namespace policy approve a manifest with no namespace.</p>
+<pre><code class="lang-shell">cat &gt; deployment.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+  labels:
+    owner: meleu
+spec:
+  replicas: 3
+EOF
+
+conftest test deployment.yaml; echo "exit=$?"</code></pre>
+  </li>
+  <li>
+    <p><strong>Trap B.</strong> Restore the violating file, rename the package, and read the
+    count. Predict the exit code before you run it.</p>
+<pre><code class="lang-shell">printf 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: hello\n  namespace: default\nspec:\n  replicas: 1\n' &gt; deployment.yaml
+sed -i 's/^package main/package kubernetes.deployment/' policy/deployment.rego
+
+conftest test deployment.yaml; echo "exit=$?"
+conftest test --all-namespaces deployment.yaml; echo "exit=$?"
+sed -i 's/^package kubernetes.deployment/package main/' policy/deployment.rego</code></pre>
+  </li>
+  <li>
+    <p><strong>Exit codes.</strong> Get the file down to a warning only, then make the warning
+    block.</p>
+<pre><code class="lang-shell">printf 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: hello\n  namespace: team-a\nspec:\n  replicas: 3\n' &gt; deployment.yaml
+
+conftest test deployment.yaml; echo "exit=$?"
+conftest test --fail-on-warn deployment.yaml; echo "exit=$?"</code></pre>
+  </li>
+  <li>
+    <p>One input per document. Append a second Deployment to the file and explain the new count
+    out loud before reading it.</p>
+<pre><code class="lang-shell">printf -- '---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: bye\n  namespace: default\nspec:\n  replicas: 1\n' &gt;&gt; deployment.yaml
+
+conftest test deployment.yaml</code></pre>
+  </li>
+  <li>
+    <p>Now yours — no snippet given. Add a <code>deny</code> rule requiring an <code>app</code>
+    label, and a second rule that catches trap A: fail a Deployment that declares no namespace at
+    all. Confirm both fire. (Ask me if either fights back.)</p>
+  </li>
+</ol>
+
+<div class="ask-teacher">
+  <strong>I am your teacher for this, not just the author of the page.</strong> Ask me anything in
+  the session: why <code>violation</code> exists alongside <code>deny</code>, when splitting into
+  namespaces is worth the risk, what <code>--combine</code> changes about <code>input</code>, how
+  to write a message that tells someone what to actually do, or how to make a GitLab job fail on
+  <code>0 tests</code>.
+</div>
+
+<footer class="colophon">
+
+  <h3>Read this next (primary source)</h3>
+  <p><a href="https://www.conftest.dev/">The conftest documentation</a> — the front page is short
+  and is the authority on all four conventions. Read it in full, then skim
+  <a href="https://www.conftest.dev/options/">Options</a> for the flags used above. If you only
+  keep one thing: the sentence about <code>deny</code>, <code>violation</code> and
+  <code>warn</code>, and the sentence about the <code>main</code> namespace.</p>
+
+  <h3>Main takeaways</h3>
+  <ul>
+    <li>Conftest adds <strong>no language</strong>. It parses a file into <code>input</code>, runs
+    your Rego, reads <code>deny</code>/<code>warn</code>, and returns an exit code.</li>
+    <li>Four conventions: policy in <code>policy/</code>, package <code>main</code>, rules named
+    <code>deny</code>/<code>violation</code>/<code>warn</code> (<code>_suffix</code> allowed), and
+    <code>input</code> is <strong>one document at a time</strong>.</li>
+    <li><code>conftest parse FILE</code> shows you the JSON your rules will address. Parse before
+    writing rules, always.</li>
+    <li>The report counts <strong>rule evaluations</strong>: rules × documents, not files.</li>
+    <li><code>deny</code> and <code>warn</code> are the same mechanism; only the exit code differs,
+    and <code>--fail-on-warn</code> changes even that.</li>
+    <li><strong>Two silent passes.</strong> A missing key makes a rule contribute nothing; a
+    non-<code>main</code> package makes conftest find no rules at all. The second announces itself
+    as <code>0 tests</code> — fail your CI on that.</li>
+  </ul>
+
+  <h3>Reference</h3>
+  <ul>
+    <li><a href="../reference/0003-conftest-cheatsheet.html">Conftest cheat sheet</a> — the
+    contract, the flags, the exit codes, and <code>conftest parse</code>.</li>
+    <li><a href="../reference/0001-glossary.html">Glossary</a> — see <em>namespace</em>,
+    <em>deny / violation / warn</em>, and <em>parser</em>.</li>
+    <li><a href="../reference/0002-opa-cli-cheatsheet.html">OPA CLI cheat sheet</a> — for the
+    <code>opa eval</code> half of section 1.</li>
+  </ul>
+
+  <h3>Lessons</h3>
+  <ul>
+    <li><a href="0001-rego-builds-a-json-document.html">Lesson 1 — Rego Builds a JSON
+    Document</a></li>
+    <li><a href="0002-many-rules-one-set.html">Lesson 2 — Many Rules, One Set</a></li>
+  </ul>
+
+  <h3>Sources</h3>
+  <ul>
+    <li id="src-1"><a href="https://www.conftest.dev/">Conftest documentation</a>: the
+    <code>deny</code>/<code>violation</code>/<code>warn</code> naming rule and the
+    <code>_suffix</code> allowance; the default <code>policy</code> directory; the default
+    <code>main</code> namespace.</li>
+    <li><a href="https://www.conftest.dev/options/">Conftest — Options</a>:
+    <code>--policy</code>, <code>--namespace</code>, <code>--all-namespaces</code>,
+    <code>--fail-on-warn</code>, <code>--no-fail</code>, <code>--output</code>.</li>
+    <li>All command output on this page was executed on this machine against conftest (dev build,
+    OPA 1.19.0) and pasted verbatim. The <code>warn</code> exit-code behaviour is stated by
+    observation, not by the docs, which are silent on it.</li>
+  </ul>
+
+  <h3>When you want a second opinion</h3>
+  <p>"One namespace or many?" and "should this be a <code>deny</code> or a <code>warn</code>?" are
+  rollout questions, not Rego questions — they depend on how much your team will tolerate being
+  blocked. Take them to
+  <a href="https://github.com/orgs/open-policy-agent/discussions">OPA Community Discussions</a> or
+  the <code>#help</code> channel of <a href="https://slack.openpolicyagent.org/">OPA Slack</a>,
+  where people have already introduced conftest to a team that did not ask for it.</p>
+
+  <p class="crumb"><a href="../index.html">↑ Back to the course index</a></p>
+
+</footer>
+
+</main>
+
+<script src="../../assets/syntax-highlight-rego.js"></script>
+<script src="../../assets/quiz-multiple-choice.js"></script>
+<script src="../../assets/recall-prompt.js"></script>
+<script src="../../assets/drill-checklist.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>

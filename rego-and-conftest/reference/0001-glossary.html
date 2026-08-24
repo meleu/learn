@@ -169,6 +169,30 @@ preparing a session for coworkers, budget extra time for those.</p>
 </table>
 </div>
 
+<h2>Conftest</h2>
+
+<p class="note">Conftest introduces no Rego. Every term here is a <em>convention</em> it layers on
+top of the language — which is why the whole section fits in one table.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Conftest</strong></td><td>A CLI that parses config files into <code>input</code>, evaluates your Rego against each one, and turns the result into an exit code. A wrapper around <code>opa eval</code>, not an engine.</td></tr>
+    <tr><td><strong>Namespace</strong> †</td><td>Conftest's word for the <strong>Rego package</strong> it queries. Default <code>main</code>. Nothing to do with Kubernetes namespaces — a permanent source of confusion when teaching this to a Kubernetes team.</td></tr>
+    <tr><td><code>deny</code></td><td>A partial set rule whose members are failure messages. Any member exits 1.</td></tr>
+    <tr><td><code>violation</code></td><td>Exact synonym for <code>deny</code>. Pick one and use it consistently.</td></tr>
+    <tr><td><code>warn</code></td><td>Same mechanism, reported but <strong>not</strong> reflected in the exit code — unless <code>--fail-on-warn</code>.</td></tr>
+    <tr><td><strong>Rule suffix</strong> †</td><td><code>deny_replicas</code>, <code>warn_labels</code>. An underscore plus an identifier; conftest finds these too. Not merely cosmetic — an <em>exception</em> names the suffix, so only suffixed rules can be excepted.</td></tr>
+    <tr><td><strong>Parser</strong></td><td>The component that turns a config file into the JSON <code>input</code>. Chosen by extension, forced with <code>--parser</code>. <code>conftest parse FILE</code> shows you its output.</td></tr>
+    <tr><td><strong>Document</strong> (conftest sense) †</td><td>One parsed unit of input. A multi-document YAML file yields several, each evaluated <em>separately</em> — your rules never see two at once without <code>--combine</code>.</td></tr>
+    <tr><td><code>--combine</code></td><td>Passes all documents at once as an array of <code>{"path": …, "contents": {…}}</code> objects — so <code>input</code> changes shape and existing rules stop matching. The only way to write a cross-file rule.</td></tr>
+    <tr><td><strong>Exception</strong></td><td>An <code>exception contains rules if …</code> rule whose members are lists of rule <em>suffixes</em> (<code>["replicas"]</code> excepts <code>deny_replicas</code>). Reported as <code>EXCP</code> and counted in the last column.</td></tr>
+    <tr><td><code>0 tests</code> †</td><td>Not "everything passed". It means <em>no rules were found</em> at the queried address — usually a package that is not <code>main</code>. Exits 0, so CI must check for it explicitly.</td></tr>
+  </tbody>
+</table>
+</div>
+
 <footer class="colophon">
   <h3>Sources</h3>
   <ul>
@@ -178,13 +202,17 @@ preparing a session for coworkers, budget extra time for those.</p>
     Language</a> (rule kinds, unification, iteration, safety)</li>
     <li><a href="https://www.openpolicyagent.org/docs/v0-upgrade">OPA Docs — v0 to v1 upgrade
     guide</a> (Rego v1 keyword requirements)</li>
+    <li><a href="https://www.conftest.dev/">Conftest documentation</a> (rule names, policy
+    directory, namespace)</li>
   </ul>
   <h3>Related</h3>
   <ul>
     <li><a href="../lessons/0001-rego-builds-a-json-document.html">Lesson 1 — Rego Builds a JSON
     Document</a></li>
     <li><a href="../lessons/0002-many-rules-one-set.html">Lesson 2 — Many Rules, One Set</a></li>
+    <li><a href="../lessons/0003-the-conftest-contract.html">Lesson 3 — The Conftest Contract</a></li>
     <li><a href="0002-opa-cli-cheatsheet.html">Reference 2 — OPA CLI cheat sheet</a></li>
+    <li><a href="0003-conftest-cheatsheet.html">Reference 3 — Conftest cheat sheet</a></li>
   </ul>
   <div class="ask-teacher">
     <strong>A term missing, or a definition that did not survive contact with reality?</strong>

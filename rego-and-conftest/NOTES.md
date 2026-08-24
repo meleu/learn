@@ -29,31 +29,43 @@ in particular is unusual for conftest material and worth covering properly
 
 ## Teaching backlog (candidate next lessons)
 
-1. ~~Partial/multi-value rules — `contains`, sets~~ → **shipped as lesson 2** (`0002-many-rules-one-set.html`).
-   Covered: the complete-rule conflict error as motivation, `contains`, incremental/additive
-   definitions, empty set = pass, dedupe/no order, and the missing-key silent pass.
-   Also consumed part of backlog item 4 (undefined vs false vs empty), so item 4 no longer needs
-   its own lesson — fold the leftovers (`null`, explicit type checks) into a later one.
-2. ~~Undefined vs false vs empty~~ — largely absorbed by lessons 1 and 2. See item 1.
-3. Rule bodies as AND, multiple rules as OR (the two-operator model). **Next up** — lesson 2 ends
-   on a conftest `deny` preview with a multi-line body and a `msg :=` variable, both deliberately
-   unexplained. That preview is the natural hook for lesson 3.
-4. Iteration: `some ... in`, `[_]`, and why "for loop" is the wrong intuition.
-5. Testing policies with `opa test` — policies need tests too, and this is still pure OPA.
-6. **Only then** conftest: what the wrapper adds, `deny`/`warn`, namespaces, `--combine`,
-   exceptions. Introduce it as "here is the convention layered on what you already know".
-7. Non-Kubernetes parsers: Dockerfile, XML (`pom.xml`), `.gitlab-ci.yml`.
-8. CI wiring in GitLab.
+**Sequence changed by the user after lesson 2** — see LR-0004. They asked to go straight to
+conftest, so items 3–5 below were deferred past the wrapper.
+
+1. ~~Partial/multi-value rules — `contains`, sets~~ → **shipped as lesson 2**.
+2. ~~Undefined vs false vs empty~~ — absorbed by lessons 1 and 2.
+3. ~~Conftest conventions~~ → **shipped as lesson 3** (`0003-the-conftest-contract.html`).
+   Covered: the four conventions, `conftest parse`, a Deployment policy, the report count as
+   rules × documents, `deny` vs `warn` exit codes, and both silent passes (missing key, and
+   non-`main` package → `0 tests`). Reference 3 shipped alongside it.
+4. Rule bodies as AND, multiple rules as OR (the two-operator model). **Next up**, and now with a
+   concrete hook: lesson 3's policy deliberately lacks an `input.kind == "Deployment"` guard, and
+   its callout says outright that guarding needs a two-expression body and that this is the next
+   lesson. Start there. `msg :=` inside a body is the other half.
+5. Iteration: `some ... in`, `[_]`, and why "for loop" is the wrong intuition. Containers are the
+   natural example now that Kubernetes is on the page (`input.spec.template.spec.containers`).
+6. Testing policies with `opa test` — policies need tests too.
+7. Conftest, part two: `--combine`, `exception` rules, `--data` for exception lists, and rule
+   suffixes as the thing exceptions key off.
+8. Non-Kubernetes parsers: Dockerfile, XML (`pom.xml`), `.gitlab-ci.yml`.
+9. CI wiring in GitLab — the `0 tests` guard from reference 3 belongs in that lesson.
 
 ## Open threads to check on next session
 
-- Drill step 7 of lesson 2 asks the user to write a fourth rule with **no snippet given** (report a
-  missing `age`). First unassisted authoring in this workspace — ask how it went; the expected
-  answer is `violations contains "age is required" if not input.age`.
-- Lesson 2's `ask-teacher` box dangles four questions on purpose: set vs array, mixing `contains`
-  and `:=` on one key, why a multi-line body needs no `and`, and how to word a good message.
-- No learning record written for lesson 2 yet — coverage is not learning. Write one once the user
-  gives evidence (drill results, a question that shows the model landed, or a correction).
+- **Still unanswered from lesson 2**: drill step 7 asked for a fourth rule with no snippet given
+  (report a missing `age`; expected `violations contains "age is required" if not input.age`).
+  Ask how it went — it was their first unassisted authoring here, and lesson 3's drill step 10
+  now asks for two more unassisted rules, so this is a trend worth tracking.
+- Lesson 2's `ask-teacher` box dangles four questions: set vs array, mixing `contains` and `:=`
+  on one key, why a multi-line body needs no `and`, and how to word a good message. The third is
+  now backlog item 4.
+- Lesson 3 drill step 10 expects, roughly:
+  `deny contains "Deployment must have an app label" if not input.metadata.labels.app` and
+  `deny contains "Deployment must declare a namespace" if not input.metadata.namespace`.
+  Both verified locally. The second one is the point — it is the fix for trap A.
+- No learning record yet for the *content* of lessons 2 or 3 — coverage is not learning. LR-0004
+  records the sequencing decision, not evidence of understanding. Write one once the user gives
+  evidence (drill results, a question that shows the model landed, or a correction).
 
 ## Verified format quirks (for future lessons)
 
@@ -77,26 +89,38 @@ there for a pedagogical reason that is not obvious from the code, say so in the 
 in an example will be read as a mistake, and reasonably so — the user is going to hand these
 policies to coworkers as models of what good Rego looks like.
 
-## Conftest facts already verified (staged for when we get there)
+## Conftest facts (all verified locally, sessions 1–2)
 
-Confirmed locally, session 1, so the future conftest lesson does not need to re-derive them:
+Everything below was run on this machine and is already baked into lesson 3 / reference 3.
 
-- Default policy dir `policy/`; default namespace `main`; failures exit 1.
-- Rule names read: `deny`, `violation` (synonym), `warn` (non-failing).
-- **The silent-pass trap**: a policy whose package is not the namespace conftest reads produces
-  no denials, so conftest reports success on a violating file. `--all-namespaces` avoids it.
-  This is a strong teaching moment — hold it for the conftest lesson, where it lands properly.
-- Parsers in this build: cue, dockerfile, edn, hcl1, hcl2, hocon, ignore, ini, json, jsonnet,
-  nginx, properties, spdx, textproto, toml, vcl, xml, yaml, dotenv.
-- `conftest parse FILE` prints the JSON a policy will see. This is the command that makes any
-  new format tractable.
+- Defaults: policy dir `policy/`, namespace `main`, `deny` exits 1, `warn` exits 0.
+- Rule names: `deny`, `violation` (exact synonym), `warn`; `_suffix` allowed (`deny_replicas`).
+- **`N tests` counts rule evaluations = rules × parsed documents**, not files. Three rules over a
+  two-document YAML reports `6 tests`.
+- **The `0 tests` trap**: a package other than `main` produces `0 tests, 0 passed` and **exit 0**.
+  `-o json` still emits `"successes": 0`, so a CI guard must *add up* successes + warnings +
+  failures rather than test for the field's presence. Working `jq` guard is in reference 3,
+  verified against all three cases (violation → 1, clean → 0, wrong package → 1).
+- `--combine` rewrites `input` into an array of `{"path", "contents"}` objects — existing
+  single-document rules stop matching. Not a drop-in flag.
+- `exception contains rules if …` yields lists of rule **suffixes**: `["replicas"]` excepts
+  `deny_replicas`. Prints as `EXCP`, counted in the summary's last column, exit 0. So suffixes are
+  load-bearing, not cosmetic.
+- Messages may be strings or objects with a `msg` key (extra keys like `severity` are carried but
+  not printed by the default output).
+- `-o` values in this build: `stdout json tap table junit github azuredevops sarif`.
+- Parsers in this build: cue, dockerfile, dotenv, edn, hcl1, hcl2, hocon, ignore, ini, json,
+  jsonnet, nginx, properties, spdx, textproto, toml, vcl, xml, yaml.
+- `conftest parse FILE` prints the JSON a policy will see. The command that makes any new format
+  tractable.
 
 ## the user's own conventions
 
 - Practice files live in `exercises/NNN/` **inside the workspace**, not in a home directory
-  scratch dir. Drills should follow that layout. `exercises/001/` holds their work from the
-  first (now superseded) Kubernetes drill — do not overwrite it; new drills get new directories.
-  Lesson 2's drill uses `exercises/002-partial-set-rules/`.
+  scratch dir. **Plain zero-padded numbers, no descriptive suffix** — lesson 2's drill said
+  `exercises/002-partial-set-rules/` and the user silently used `exercises/002/` instead. Lesson
+  3's drill says `exercises/003/`. Do not overwrite an existing directory; new drills get new
+  numbers.
 - Brings their own example code to a lesson request (lesson 2's `package signup` snippet was
   theirs, verbatim). Use what they hand over rather than substituting something "better" —
   and verify it runs before it goes on the page.
