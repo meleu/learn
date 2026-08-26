@@ -101,7 +101,7 @@ Confirmed locally with `conftest parse`, session 1:
   written against a multi-dependency pom will silently break on a single-dependency one. This is
   an excellent real-world exercise once `some ... in` and type checks are covered.
 
-## How the user engages with lesson material (session 1)
+## How the user engages with lesson material
 
 Audits the example code rather than skimming it — caught an unused `replicas` rule in lesson 1's
 first policy on first read, and asked whether it was deliberate. **Consequence: no filler or
@@ -136,7 +136,7 @@ Everything below was run on this machine and is already baked into lesson 3 / re
   error). The earlier `jq`-summing guard worked but was needless; `-o json` emits
   `"successes": 0` even when nothing ran, which is why the naive presence-test fails.
 - **Canary fixture** is the stronger second guard: a committed manifest that must be denied, with
-  the check grepping for `^not ok ` rather than a non-zero exit. Grepping matters — a first draft
+  the check grepping for `^not ok` rather than a non-zero exit. Grepping matters — a first draft
   keyed on the exit code alone reported "ok" for an empty policy dir, because a crash also exits
   non-zero. Catches rules that load but no longer match, which the TAP guard cannot.
 - `--combine` rewrites `input` into an array of `{"path", "contents"}` objects — existing
@@ -207,10 +207,8 @@ read anything. Do not oversell it — verified session 4 that it misses the dead
 ## the user's own conventions
 
 - Practice files live in `exercises/NNN/` **inside the workspace**, not in a home directory
-  scratch dir. **Plain zero-padded numbers, no descriptive suffix** — lesson 2's drill said
-  `exercises/002-partial-set-rules/` and the user silently used `exercises/002/` instead. Lesson
-  3's drill says `exercises/003/`. Do not overwrite an existing directory; new drills get new
-  numbers.
+  scratch dir. **Plain zero-padded numbers, no descriptive suffix** — Do not
+overwrite an existing directory; new drills get new numbers.
 - Brings their own example code to a lesson request (lesson 2's `package signup` snippet was
   theirs, verbatim). Use what they hand over rather than substituting something "better" —
   and verify it runs before it goes on the page.
