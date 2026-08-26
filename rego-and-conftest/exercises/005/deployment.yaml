@@ -1,0 +1,15 @@
+# https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: myco/app:1.4.2
+        - name: sidecar
+          image: myco/logger:latest
+        - name: proxy
+          image: nginx:latest
