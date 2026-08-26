@@ -1,0 +1,9 @@
+# https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+  labels:
+    owner: meleu
+spec:
+  replicas: 1
