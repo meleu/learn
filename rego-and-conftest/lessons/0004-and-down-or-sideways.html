@@ -610,7 +610,16 @@ opa eval -d policy/replicas.rego -i service.json 'data.main' --format pretty</co
     <code>else</code> and <code>default</code> are not among the ones that apply to
     <code>deny</code>.</li>
     <li>Conftest's <code>N tests</code> counts <strong>rule definitions × documents</strong>;
-    helper rules are not counted.</li>
+    helper rules are not counted. (True while each definition yields at most one message —
+    <a href="0005-the-variable-is-the-loop.html">lesson 5</a> replaces it with the exact rule once
+    rules start iterating.)</li>
+  </ul>
+
+  <h3>Next lesson</h3>
+  <ul>
+    <li><a href="0005-the-variable-is-the-loop.html">Lesson 5 — The Variable Is the Loop</a>: how
+    a rule reaches into a list of containers, why "for loop" is the wrong word for what happens,
+    and the one iteration mistake the compiler will actually catch for you.</li>
   </ul>
 
   <h3>Reference</h3>

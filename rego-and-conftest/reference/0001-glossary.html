@@ -201,6 +201,30 @@ preparing a session for coworkers, budget extra time for those.</p>
 <em>values</em> → <code>x in {"a", "b"}</code>; alternatives that are <em>conditions</em>, used
 once → two rule definitions; the same condition used by several rules → a helper.</p>
 
+<h2>Iteration</h2>
+
+<p class="note">Rego has no loop construct. A <em>variable</em> placed where a key or index would
+go turns a lookup into a question — "for which value does this hold?" — and the engine answers it
+every way the data allows. Everything in this table is a consequence of that.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Binding</strong></td><td>One assignment of a value to a free variable that satisfies the expression. A body is evaluated <em>once per binding</em>, so one rule definition can add many members to a set.</td></tr>
+    <tr><td><strong>Output variable</strong> †</td><td>A variable the query solves <em>for</em> rather than one you supply. <code>containers[i]</code> with <code>i</code> unbound asks for every <code>i</code> that exists. Not a loop counter — there is no order and no last iteration.</td></tr>
+    <tr><td><code>some x in xs</code></td><td>Declares <code>x</code> as free over <code>xs</code>. The spelling to write. Existential: it holds if <em>at least one</em> binding satisfies the rest of the body.</td></tr>
+    <tr><td><code>some i, x in xs</code></td><td>Binds both halves of a membership. Array → <em>index, value</em>. Object → <em>key, value</em>. Set → <em>value, value</em>, because a set has no separate key.</td></tr>
+    <tr><td><code>xs[_]</code></td><td>The same iteration with the variable left anonymous. Current, supported, and <strong>not</strong> flagged by Regal. Prefer <code>some … in</code> anyway — brackets are ambiguous between iteration and membership — <em>except</em> for deeply nested paths (<code>a[_].b[_].c</code>), where the style guide prefers the wildcard.</td></tr>
+    <tr><td><strong>Undeclared variable</strong> †</td><td>A <em>named</em> variable appearing from nowhere: <code>xs[i]</code> with no <code>some i</code>. Iterates identically, legal in v1, and the one form Regal rejects (<code>use-some-for-output-vars</code>). Distinct from <code>xs[_]</code>, which the style guide lists among the accepted fixes for it.</td></tr>
+    <tr><td><code>every x in xs { … }</code></td><td>Universal quantification. Holds when the body holds for <em>all</em> members. <strong>Vacuously true</strong> on an empty collection; <strong>undefined</strong> on a missing one. Binds nothing you can report, so it cannot name the offending member.</td></tr>
+    <tr><td><strong>Zero bindings</strong> †</td><td>Iterating a missing or misspelled path yields no bindings, so the rule contributes nothing and the file passes — silently. The same absence-is-silence mechanic as a missing key in a condition.</td></tr>
+    <tr><td><code>rego_unsafe_var_error</code></td><td>What you get for negating an iterating expression (<code>not xs[_].field</code>). Safety requires a variable to be bound by a non-negated expression first. Bind with <code>some</code>, then negate.</td></tr>
+    <tr><td><strong>Nested iteration</strong></td><td>Two <code>some</code> lines in one body. The inner collection is reached through the outer binding (<code>some c in containers; some p in c.ports</code>), so the result is every valid pair, not a blind cross product.</td></tr>
+  </tbody>
+</table>
+</div>
+
 <h2>Language mechanics</h2>
 
 <div class="table-scroll">
@@ -211,11 +235,11 @@ once → two rule definitions; the same condition used by several rules → a he
     <tr><td><code>==</code></td><td>Comparison. Both sides must already be known.</td></tr>
     <tr><td><code>=</code> †</td><td>Unification: assign-or-compare, whichever the situation calls for. Prefer <code>:=</code> and <code>==</code> until you know why you want this.</td></tr>
     <tr><td><strong>Unification</strong></td><td>Solving for whatever bindings make both sides equal. The engine's core operation.</td></tr>
-    <tr><td><code>some</code></td><td>Declares a variable as free, to be searched over. <code>some x in arr</code>.</td></tr>
-    <tr><td><code>every</code></td><td>Asserts a condition holds for all members of a collection.</td></tr>
-    <tr><td><code>_</code></td><td>Anonymous iteration variable. <code>arr[_]</code> means "any element of arr".</td></tr>
+    <tr><td><code>some</code></td><td>Declares a variable as free, to be searched over. <code>some x in arr</code>. See <em>Iteration</em> above.</td></tr>
+    <tr><td><code>every</code></td><td>Asserts a condition holds for all members of a collection. Vacuously true on an empty one, undefined on a missing one — see <em>Iteration</em> above.</td></tr>
+    <tr><td><code>_</code></td><td>Anonymous iteration variable. <code>arr[_]</code> means "any element of arr". Illegal inside <code>not</code>: nothing binds it.</td></tr>
     <tr><td><code>contains</code> †</td><td>Makes a rule a partial set rule. <code>s contains x if b</code> reads "when <code>b</code> holds, <code>x</code> belongs to <code>s</code>".</td></tr>
-    <tr><td><strong>Set</strong> †</td><td>Unordered collection, no duplicates. Rego's one type that JSON lacks — OPA serialises it as an array on output, which is a printing detail, not an ordering promise.</td></tr>
+    <tr><td><strong>Set</strong> †</td><td>Unordered collection, no duplicates. Rego's one type that JSON lacks — OPA serialises it as an array on output, which is a printing detail, not an ordering promise. <strong>It has no positions:</strong> <code>s[x]</code> is a membership test that yields <code>x</code>, so <code>{1,2,3}[2]</code> is <code>2</code> and <code>{1,2,3}[0]</code> is undefined.</td></tr>
     <tr><td><code>in</code></td><td>Membership. <code>x in s</code> holds when <code>x</code> is a member of the collection <code>s</code>.</td></tr>
     <tr><td><code>sprintf()</code></td><td>Builds a message string: <code>sprintf(format, values)</code> — exactly two arguments, the second an <em>array</em>. <code>%s</code> string, <code>%d</code> integer, <code>%v</code> anything.</td></tr>
     <tr><td><code>count()</code></td><td>Size of a collection. <code>count(deny) == 0</code> is the idiomatic "did it pass?".</td></tr>
@@ -255,11 +279,16 @@ top of the language — which is why the whole section fits in one table.</p>
     <li><a href="https://www.openpolicyagent.org/docs/philosophy">OPA Docs — Philosophy</a>
     (base/virtual documents, the unified <code>data</code> namespace)</li>
     <li><a href="https://www.openpolicyagent.org/docs/policy-language">OPA Docs — Policy
-    Language</a> (rule kinds, unification, iteration, safety)</li>
+    Language</a> (rule kinds, unification, iteration, safety, and
+    <a href="https://www.openpolicyagent.org/docs/policy-language#universal-quantification-for-all">universal
+    quantification</a>)</li>
     <li><a href="https://www.openpolicyagent.org/docs/v0-upgrade">OPA Docs — v0 to v1 upgrade
     guide</a> (Rego v1 keyword requirements)</li>
     <li><a href="https://www.conftest.dev/">Conftest documentation</a> (rule names, policy
     directory, namespace)</li>
+    <li><a href="https://github.com/open-policy-agent/rego-style-guide">Rego Style Guide</a>
+    (<em>Prefer <code>some .. in</code> for iteration</em>, <em>Don't use undeclared variables</em>,
+    <em>Use <code>every</code> to express FOR ALL</em>)</li>
   </ul>
   <h3>Related</h3>
   <ul>
@@ -268,6 +297,8 @@ top of the language — which is why the whole section fits in one table.</p>
     <li><a href="../lessons/0002-many-rules-one-set.html">Lesson 2 — Many Rules, One Set</a></li>
     <li><a href="../lessons/0003-the-conftest-contract.html">Lesson 3 — The Conftest Contract</a></li>
     <li><a href="../lessons/0004-and-down-or-sideways.html">Lesson 4 — AND Down, OR Sideways</a></li>
+    <li><a href="../lessons/0005-the-variable-is-the-loop.html">Lesson 5 — The Variable Is the
+    Loop</a></li>
     <li><a href="0002-opa-cli-cheatsheet.html">Reference 2 — OPA CLI cheat sheet</a></li>
     <li><a href="0003-conftest-cheatsheet.html">Reference 3 — Conftest cheat sheet</a></li>
   </ul>

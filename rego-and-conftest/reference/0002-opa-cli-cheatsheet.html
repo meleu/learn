@@ -45,7 +45,7 @@ opa eval -d policy.rego -i input.json 'data' --format pretty</code></pre>
   <thead><tr><th>Flag</th><th>Does</th></tr></thead>
   <tbody>
     <tr><td><code>-d</code>, <code>--data</code></td><td>Load a <code>.rego</code> policy, a <code>.json</code>/<code>.yaml</code> data file, or recursively a whole directory of them.</td></tr>
-    <tr><td><code>-i</code>, <code>--input</code></td><td>The file that becomes the <code>input</code> global.</td></tr>
+    <tr><td><code>-i</code>, <code>--input</code></td><td>The file that becomes the <code>input</code> global. <strong>Reads YAML as well as JSON</strong>, so a Kubernetes manifest can be passed straight in — no <code>conftest parse</code> conversion step. <strong>Gotcha:</strong> on a multi-document YAML it silently takes the <em>first</em> document only, and exits 0.</td></tr>
     <tr><td><code>--format pretty</code></td><td>Human-readable output. Without it you get a verbose result wrapper.</td></tr>
     <tr><td><code>--format json</code></td><td>Machine-readable, with binding metadata.</td></tr>
     <tr><td><code>--explain full</code></td><td>Print the full evaluation trace. Reach for it when a rule is undefined and you cannot see why.</td></tr>

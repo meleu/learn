@@ -45,11 +45,14 @@ conftest, so items 3–5 below were deferred past the wrapper.
    silences the whole rule — a third silent pass), the dead rule from stacked equalities, and the
    three spellings of OR (`in` a set / two definitions / helper rule). Glossary gained a
    **Logic: AND and OR** section; new shared asset `rego-and-or-grid.css`.
-5. Iteration: `some ... in`, `[_]`, and why "for loop" is the wrong intuition. **Next up.**
-   Containers are the natural example now that Kubernetes is on the page
-   (`input.spec.template.spec.containers`) — and lesson 4 pointedly avoided `containers[0]` so
-   that indexing does not get taught as the way to reach a list. Also the place to sharpen
-   set-vs-array (LR-0005) and to revisit `in`, which lesson 4 introduced as an OR spelling only.
+5. ~~Iteration: `some ... in`, `[_]`, why "for loop" is the wrong intuition~~ → **shipped as
+   lesson 5** (`0005-the-variable-is-the-loop.html`). Covered: the variable-as-question framing
+   ("for which c?", not "for each c"), one definition producing many messages, the corrected
+   summary arithmetic (LR-0009), the three spellings plus the undeclared-variable form Regal
+   flags, iterating a missing path as the **fourth silent pass**, `rego_unsafe_var_error` as the
+   one iteration mistake the compiler *does* catch, set-has-no-positions (LR-0005 debt closed),
+   and `every` in a helper with the "prefer `some`, it names the offender" judgement. Glossary
+   gained an **Iteration** section; no new shared asset was needed.
 5b. **Helper functions**, from the Styra OR article the user supplied session 4:
    `allowed_firstname(name) if name == "joe"`, plus Rego's equality pattern-matching on arguments
    (`alcohol_allowed("Sweden", age) if age > 18`). Not urgent — functions have not been taught at
@@ -74,9 +77,19 @@ conftest, so items 3–5 below were deferred past the wrapper.
   complete-rule constructs, so neither applies to `deny`). If pushed on `else`, the extra fact is
   that it fixes evaluation order, and the one real use is guarding an expensive call such as
   `http.send` behind a cache check.
-- Carry forward into later lessons, not now: sharpen set-vs-array at the iteration lesson
-  (LR-0005), and fold `--fail-on-warn`'s exit-code renumbering and `--all-namespaces`'s limits
-  into the CI lesson (LR-0006). Reference 3 already carries both facts.
+- Carry forward into later lessons, not now: fold `--fail-on-warn`'s exit-code renumbering and
+  `--all-namespaces`'s limits into the CI lesson (LR-0006). Reference 3 already carries both facts.
+  Set-vs-array is **done** — lesson 5 §7 and the glossary's Set entry.
+- **Comprehensions are the obvious next gap.** Lesson 5 deliberately kept them out and signposts
+  them in the ask-teacher box. They are the natural home for `count()`-based rules ("no more than
+  N of X") and for the "none of" shape. Candidate for its own short lesson, or a section of the
+  `conftest verify` lesson.
+- Lesson 5's drill step 10 asks the user to compare a `some` policy against an `every` policy and
+  defend a choice. If they do it, that is the first time they will have exercised a *design*
+  judgement rather than a syntax one — worth a learning record either way.
+- The silent-pass tally is now at **five** and is becoming the course's spine. Backlog item 6
+  (`conftest verify`) is where it should pay off: a unit test is the only tool that catches any of
+  them. Consider opening that lesson by listing all five and asking which a test would catch.
 
 ## Verified format quirks (for future lessons)
 
@@ -160,6 +173,57 @@ Everything below was run on this machine and is already baked into lesson 3 / re
   and failures → **2**. Any CI step keying on `== 1` silently changes meaning when someone adds
   the flag. Reference 3's exit-code table and a callout now carry this.
 
+## Rego facts verified session 6 (baked into lesson 5)
+
+- **Conftest's summary arithmetic, fitted over five configurations** — see LR-0009. Per document:
+  `failures` = messages; `passed` = max(0, definitions − failures); `tests` = their sum. Lesson 4's
+  "definitions × documents" is a special case, not the rule.
+- **Set members come back sorted, not in document order.** A rule iterating three containers and
+  matching numbers 2 and 3 prints the third before the second. Good, cheap evidence for "no order".
+- **Iterating a missing/misspelled path = zero bindings = clean pass, exit 0.** Fourth distinct
+  silent pass in the course.
+- **`not xs[_].field` is a compile error**: `rego_unsafe_var_error: var _ is unsafe`. Bind with
+  `some` first, negate second. The one iteration mistake the toolchain catches loudly.
+- **An undeclared *named* variable in a reference (`xs[i]` with no `some i`) iterates fine in v1**,
+  and Regal 0.42.0 flags it as `use-some-for-output-vars` (idiomatic category). Regal is otherwise
+  clean on the lesson's policies — only `directory-package-mismatch`, the usual scratchpad artifact.
+- **`xs[_]` is NOT deprecated and Regal does not flag it**, even with `--enable-all` — verified
+  side by side against the `some … in` version, identical findings. Corrected after the user
+  challenged the word "older" in lesson 5 §5 (session 6). The accurate picture:
+  - **History**: `in` / `some … in` arrived in **OPA v0.34.0** (Nov 2021) behind
+    `import future.keywords.in`, unconditional in v1.0. So the wildcard genuinely predates it —
+    but chronology is not the argument and must not be presented as one.
+  - **The real argument** is the style guide's: `some … in` "removes ambiguity around iteration vs.
+    membership checks". Brackets are overloaded — `containers[_]` iterates, `roles["admin"]` tests
+    membership. Ties directly to lesson 5 §7 (a set has no positions).
+  - **The style guide explicitly prefers the wildcard for deeply nested paths**:
+    `data.regions[_].networks[_].servers[_].hostname` over four `some` lines. Now quoted on the page.
+  - **It also lists `input.topics[_].body` as an accepted *fix*** for an undeclared variable — which
+    is the sharpest available evidence that `[_]` is idiomatic and a bare `i` is not.
+  - The style guide *does* list `host := data.network.hosts[_]` under **Avoid** for the ordinary
+    shallow case, so "prefer form 1 by default" survived the correction intact.
+- **Set indexing**: `{1,2,3}[2]` → `2` (membership test yielding the member); `{1,2,3}[0]` →
+  undefined. On a *typed* set OPA may reject it at compile instead: `{"a","b","c"}[0]` is a
+  `rego_type_error` (`have: 0, want (type): string`). LR-0005 said "undefined rather than an error";
+  both happen, and which one depends on whether OPA can infer a homogeneous element type.
+- **`some i, v in {"a","b"}` binds `i == v`** — the crispest possible demonstration that a set has
+  no separate key.
+- **`every`**: vacuously `true` over `[]`; **undefined** over a missing key, so `not every_x` holds
+  and the rule fires. Consequence verified: on a Deployment with `containers` misspelled, the
+  `every` policy denies and the `some` policy passes. `every x in [] { false }` does not compile —
+  `rego_compile_error: declared var x unused` — so a vacuous-truth demo needs a body that uses the
+  variable (`every x in [] { x > 100 }`).
+- **Nested iteration** (`some c in containers; some p in c.ports`) yields every valid pair, reached
+  through the outer binding. Verified but *not* taught — held back as an ask-teacher hook.
+- **`opa eval -i` reads YAML directly** — a Kubernetes manifest can be passed straight in, no
+  `conftest parse` conversion step. **But on a multi-document YAML it silently takes only the first
+  document and exits 0.** Both facts now in reference 2's `-i` row. The gotcha is a good
+  interleaving hook for the CI lesson, and a second reason to reach for `conftest parse` when the
+  file might hold more than one document.
+- **Binding the whole array by mistake** (`c := …containers` then `c.name`) is a fifth silent-pass
+  costume: a correctly-spelled key asked of the wrong *kind* of value. Used as lesson 5's recall
+  prompt; verified to report `1 test, 1 passed`, exit 0.
+
 ## Rego facts verified session 5
 
 - **`not x in s` parses as `not (x in s)`** — verified with a `Service` against
@@ -192,6 +256,17 @@ Everything below was run on this machine and is already baked into lesson 3 / re
   `regal lint --enable-all`. Only flagged `directory-package-mismatch`, an artifact of the
   scratchpad layout. So lesson 4's "nothing in the toolchain will tell you" claim is verified
   against the dedicated linter too, and is stated that way on the page.
+
+## Accuracy pressure from the user (session 6)
+
+They challenged the word **"older"** applied to `xs[_]` in lesson 5 §5 and asked directly whether it
+was deprecated. It was not, and the page's justification ("tells the reader less") was vague where
+the style guide's actual reason is specific. **Consequence: never let a comparative adjective stand
+in for a citation.** If a lesson says one form is preferred, it must say *by whom* and *why*, and it
+must state whether the other form is still valid — otherwise the user reads "old" as "deprecated"
+and will pass that on to coworkers, which is exactly the failure mode the mission is built to avoid.
+Second consequence: check Regal's opinion on *both* sides of any style claim before writing it, not
+just the side being criticised.
 
 ## Regal (noticed session 4, not yet taught)
 

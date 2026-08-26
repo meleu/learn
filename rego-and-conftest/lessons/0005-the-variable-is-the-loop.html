@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 5 · The Variable Is the Loop</title>
+<link rel="stylesheet" href="../../assets/base.css">
+</head>
+<body>
+<main class="sheet">
+
+<p class="crumb"><a href="../index.html">↑ Course index</a></p>
+
+<header class="masthead">
+  <p class="eyebrow">Rego &amp; Conftest · Lesson 5</p>
+  <h1>The Variable Is the Loop</h1>
+  <p class="standfirst">Real config is full of lists — containers, ports, volumes, dependencies —
+  and you cannot reach a list element with a path. Rego's answer is not a loop. It is
+  <strong>a variable, and an engine that finds every value the variable could take.</strong>
+  Once you see that, iteration stops being a construct you memorise.</p>
+</header>
+
+<div class="callout good">
+  <p class="callout-title">Your win for this lesson</p>
+  <p>One rule that inspects <em>every</em> container in a Deployment and produces a separate,
+  named message for each bad one — the shape of almost every Kubernetes policy you will write
+  at work.</p>
+</div>
+
+<h2>1 · The wall you hit</h2>
+
+<p>Everything so far addressed a single value by path: <code>input.kind</code>,
+<code>input.spec.replicas</code>. Here is the document that breaks that habit — the same
+<code>conftest parse</code> move from <a href="0003-the-conftest-contract.html">lesson 3</a>,
+because you still never guess at a shape:</p>
+
+<figure>
+  <p class="code-label">deployment.yaml</p>
+<pre><code class="lang-yaml">apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: myco/app:1.4.2
+        - name: sidecar
+          image: myco/logger:latest
+        - name: proxy
+          image: nginx:latest</code></pre>
+</figure>
+
+<figure>
+<pre><code class="lang-shell">$ conftest parse deployment.yaml
+{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": { "name": "hello" },
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          { "image": "myco/app:1.4.2",     "name": "app"     },
+          { "image": "myco/logger:latest", "name": "sidecar" },
+          { "image": "nginx:latest",       "name": "proxy"   }
+        ]
+      }
+    }
+  }
+}</code></pre>
+<figcaption>Verified output, whitespace compacted to fit. <code>containers</code> is an
+<strong>array</strong>, and the policy needs to say something about all three members without
+knowing there are three.</figcaption>
+</figure>
+
+<h2>2 · There is no loop. There is a variable.</h2>
+
+<p>The path <code>input.spec.template.spec.containers</code> names the whole array. Put a
+<em>variable</em> where the position would go, and you have asked a different kind of question:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -i deployment.yaml 'name := input.spec.template.spec.containers[_].name' --format pretty
+┌───────────┐
+│   name    │
+├───────────┤
+│ "app"     │
+│ "sidecar" │
+│ "proxy"   │
+└───────────┘</code></pre>
+<figcaption>Verified output. One query. Three answers. Nothing looped — the engine
+<em>solved</em> for every binding that makes the expression hold, and reported each solution as
+a row. (<code>opa eval -i</code> reads YAML as happily as JSON, so there is no conversion step —
+<code>conftest parse</code> above was for <em>looking</em> at the shape, not for producing a
+file.)</figcaption>
+</figure>
+
+<div class="key-idea">
+  <p><strong><code>some c in containers</code> does not mean "for each c". It means "for which
+  c?"</strong> You are not issuing a command; you are stating a condition with a hole in it, and
+  the engine fills the hole every way it can. Everything odd about Rego iteration follows from
+  that one sentence — so it is the sentence to put on the whiteboard.</p>
+</div>
+
+<p>This is the same machinery as <a href="0001-rego-builds-a-json-document.html">lesson 1</a>'s
+document-building, seen from the side: a rule body is a query, and a query with a free variable
+has as many solutions as the data allows. The docs call the variable an <em>output
+variable</em><a href="#src-1">¹</a>, because the query hands it back to you filled in.</p>
+
+<h2>3 · One rule, one message per offender</h2>
+
+<p>Now put it in a rule. The idiomatic spelling declares the variable with
+<code>some … in</code>:</p>
+
+<figure>
+  <p class="code-label">policy/images.rego</p>
+<pre><code class="lang-rego">package main
+
+deny contains msg if {
+	some c in input.spec.template.spec.containers
+	endswith(c.image, ":latest")
+	msg := sprintf("container %s uses a floating tag: %s", [c.name, c.image])
+}</code></pre>
+</figure>
+
+<p>Read it with <a href="0004-and-down-or-sideways.html">lesson 4</a>'s model and nothing is new:
+three expressions, so AND. What <em>is</em> new is that the first expression has three solutions,
+so the whole body is tried three times — once per binding of <code>c</code>. Two of those tries
+survive the second expression:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test deployment.yaml
+FAIL - deployment.yaml - main - container proxy uses a floating tag: nginx:latest
+FAIL - deployment.yaml - main - container sidecar uses a floating tag: myco/logger:latest
+
+2 tests, 0 passed, 0 warnings, 2 failures, 0 exceptions</code></pre>
+<figcaption>Verified output. <strong>One</strong> rule definition, <strong>two</strong> messages —
+and note the order: <code>proxy</code> is the third container but prints first. Set members come
+back sorted, not in document order.</figcaption>
+</figure>
+
+<p>The set does the collecting, exactly as in <a href="0002-many-rules-one-set.html">lesson
+2</a>. Each surviving binding adds one member. If two containers had the same name and the same
+problem, you would get one message, because that is what a set is.</p>
+
+<div class="callout warn">
+  <p class="callout-title">This corrects lesson 4's arithmetic</p>
+  <p>Lesson 4 told you conftest's <code>N tests</code> counts <em>rule definitions × documents</em>.
+  That held while every definition produced at most one message. It does not survive iteration —
+  above, one definition over one document reports <code>2 tests</code>. The exact rule, verified
+  over five configurations:</p>
+  <ul>
+    <li><strong>failures</strong> = the number of messages in the set. That is the honest number.</li>
+    <li><strong>passed</strong> = <code>definitions − failures</code>, floored at zero. It is a
+    subtraction, not a measurement.</li>
+    <li><strong>tests</strong> = <code>passed + failures</code>.</li>
+  </ul>
+  <p>So an iterating rule that finds three problems reports <code>3 tests, 0 passed</code>, and the
+  "passed" column silently absorbs the difference. <strong>Only the failure count means anything
+  once your rules iterate</strong> — which is worth saying out loud to a team that has started
+  putting the summary line in a dashboard.</p>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">A policy has one <code>deny</code> definition. It iterates a four-element list
+  and matches three of them. What does the summary line say?</p>
+  <ul class="quiz-options">
+    <li data-correct>Three tests, none of them passed</li>
+    <li>Four tests, only one of them passed</li>
+    <li>One single test, and it failed</li>
+    <li>Four tests, and three of them failed</li>
+  </ul>
+  <div class="quiz-explain">Failures equals messages, so three. Passed is definitions minus
+  failures floored at zero: 1 − 3 → 0. Tests is their sum, so three. The size of the list you
+  iterated never enters the arithmetic.</div>
+</div>
+
+<h2>4 · Three ways "for loop" will mislead you</h2>
+
+<p>The word is close enough to be useful for about a day, and then it costs you. Each of these is
+a question a coworker will ask, and the answer is the same sentence from section 2.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>You will reach for</th><th>What Rego does instead</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Order</strong> — "it runs first to last"</td>
+      <td>There is no order. The output above proved it: <code>proxy</code> before
+      <code>sidecar</code>. Bindings are solutions to a query, and a solution set has no
+      sequence.</td>
+    </tr>
+    <tr>
+      <td><strong>Early exit</strong> — <code>break</code>, <code>return</code></td>
+      <td>Nothing stops. Every binding that satisfies the body contributes a member. You do not get
+      "the first bad container"; you get all of them, which is what a policy report wants
+      anyway.</td>
+    </tr>
+    <tr>
+      <td><strong>An accumulator</strong> — <code>results.append(…)</code></td>
+      <td>Nothing accumulates. There is no mutable state in Rego at all<a href="#src-1">¹</a>. You
+      describe what belongs in the set; the engine assembles it.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>There is no <code>continue</code> either, and no need for one: a binding whose body fails simply
+contributes nothing. Skipping is the default, not a statement you write.</p>
+
+<h2>5 · The other spellings you will read</h2>
+
+<p>Three ways to write the same iteration. All three are current, supported Rego — nothing here
+is deprecated — but they do not read equally well, and the style guide has a clear default.</p>
+
+<figure>
+<pre><code class="lang-rego"># 1. some ... in  — the default
+some c in input.spec.template.spec.containers
+
+# 2. the wildcard — compact, and the winner for deeply nested paths
+image := input.spec.template.spec.containers[_].image
+
+# 3. some with the index, when the message should name a position
+some i, c in input.spec.template.spec.containers</code></pre>
+</figure>
+
+<p><code>_</code> is an anonymous variable: a hole you never need to refer to again. Form 2 is the
+same mechanism with the name left out. It is <em>chronologically</em> the older of the two —
+<code>some … in</code> arrived in OPA v0.34.0 (2021) behind
+<code>import future.keywords.in</code> and became unconditional in v1.0<a href="#src-5">⁵</a> — but
+age is not the argument, and it is worth being precise about that because someone will ask.
+<strong>The wildcard is not deprecated, and Regal does not flag it</strong>, even with every rule
+enabled (verified locally, Regal 0.42.0).</p>
+
+<p>The real argument is <em>ambiguity</em>. The style guide's own reason for preferring form 1 is
+that brackets are overloaded: <a
+href="https://github.com/open-policy-agent/rego-style-guide#prefer-some--in-for-iteration">"Using the
+<code>some</code> .. <code>in</code> construct for iteration removes ambiguity around iteration vs.
+membership checks, and is generally more pleasant to read."</a><a href="#src-4">⁴</a> Section 7
+below is that overloading in its purest form — on a set, <code>s[x]</code> is a membership test,
+not a lookup — so <code>containers[_]</code> and <code>roles["admin"]</code> are the same syntax
+doing two different jobs. <code>some</code> says which one you meant.</p>
+
+<div class="callout good">
+  <p class="callout-title">Where the wildcard wins outright</p>
+  <p>The style guide grants form 2 an explicit exception for <strong>deeply nested</strong>
+  structures<a href="#src-4">⁴</a>, where naming every level is noise:</p>
+<pre><code class="lang-rego">hostname := data.regions[_].networks[_].servers[_].hostname
+
+# is likely preferable to
+
+some region in data.regions
+some network in region
+some server in network
+hostname := server.hostname</code></pre>
+  <p>Which is a rule you can hand a coworker as a sentence: <strong>name the thing you are going to
+  talk about; leave the levels you are only passing through anonymous.</strong> One
+  <code>containers[_]</code> whose element you then use three times wants a name. Three levels of
+  scaffolding on the way to a leaf does not.</p>
+</div>
+
+<p>Form 3 binds both halves of the pair — for an array that is <em>index, value</em>:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test deployment.yaml    # with `some i, c in`, message using %d and i
+FAIL - deployment.yaml - main - containers[1] (sidecar) uses myco/logger:latest
+FAIL - deployment.yaml - main - containers[2] (proxy) uses nginx:latest</code></pre>
+<figcaption>Verified output. Worth the extra variable when a coworker has to find the offending
+block in a 300-line manifest.</figcaption>
+</figure>
+
+<p class="note">A fourth form is the one to actually avoid: an undeclared <em>named</em> variable
+in a reference, <code>containers[i].image</code> with no <code>some i</code>. It iterates just the
+same, and Rego v1 still allows it, but this is the form Regal does flag —
+<code>use-some-for-output-vars</code><a href="#src-3">³</a>, verified locally, and the style guide
+lists <code>message := input.topics[_].body</code> among the accepted <em>fixes</em> for it<a
+href="#src-4">⁴</a>. That is the sharpest evidence that the wildcard is idiomatic and a bare
+<code>i</code> is not: with <code>_</code> the reader can see there is nothing to track, whereas a
+named <code>i</code> from nowhere could have been bound anywhere above.</p>
+
+<h2>6 · Iterating over nothing</h2>
+
+<p>Give that rule a document with no <code>containers</code> key — a Service, or a Deployment
+with the path misspelled:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test service.yaml
+
+1 test, 1 passed, 0 warnings, 0 failures, 0 exceptions
+$ echo $?
+0</code></pre>
+<figcaption>Verified output.</figcaption>
+</figure>
+
+<p>Undefined collection → zero bindings → zero messages → pass. No error, no warning. This is the
+<strong>fourth</strong> distinct way a policy passes a file it should have failed, after lesson 3's
+missing key and non-<code>main</code> package and lesson 4's undefined
+<code>sprintf</code> argument. They are all one mechanism wearing four costumes: <em>in Rego,
+absence is not failure — it is silence.</em></p>
+
+<div class="callout warn">
+  <p class="callout-title">Flag this one for your coworkers</p>
+  <p>A rule that iterates a path is only as good as the path. Misspell
+  <code>containers</code> as <code>container</code> and the rule reports a clean pass forever,
+  on every file, for as long as it stays in the repository. The habit from lesson 4 is the
+  answer and it does not change: <strong>watch the rule fail on a fixture before you believe
+  it.</strong></p>
+</div>
+
+<p>One thing the compiler <em>does</em> catch. If you try to negate an iterating expression
+directly — <code>not input.spec.template.spec.containers[_].resources</code>, hoping for "some
+container has no resources" — you get a hard error, not silence:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test deployment.yaml
+Error: running test: load: loading policies: get compiler: 1 error occurred: policy/limits.rego:4: rego_unsafe_var_error: var _ is unsafe</code></pre>
+<figcaption>Verified output. This is Rego's <strong>safety</strong> rule<a href="#src-1">¹</a>:
+every variable must be bound by a <em>non-negated</em> expression somewhere. "Find me the values
+that don't exist" is not a question with an answer.</figcaption>
+</figure>
+
+<p>Which forces the correct spelling, and the correct spelling is also the readable one — bind
+first, negate second:</p>
+
+<figure>
+<pre><code class="lang-rego">deny contains msg if {
+	some c in input.spec.template.spec.containers
+	not c.resources.limits.memory
+	msg := sprintf("container %s has no memory limit", [c.name])
+}</code></pre>
+<figcaption>Verified: on a two-container Deployment where only one sets a limit, this denies
+exactly one container, by name.</figcaption>
+</figure>
+
+<h2>7 · Sets have no positions</h2>
+
+<p>Lesson 2 left you with "a set is an array without duplicates or order". That is enough to write
+rules with, and it breaks exactly here, the first time you index one:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval 's := {1, 2, 3}; s[0]' --format pretty
+undefined
+$ opa eval 's := {1, 2, 3}; s[2]' --format pretty
+┌─────────┬──────┐
+│    s    │ s[2] │
+├─────────┼──────┤
+│ [1,2,3] │ 2    │
+└─────────┴──────┘</code></pre>
+<figcaption>Verified output. <code>s[2]</code> did not return the third element. It returned
+<code>2</code> — because on a set, brackets are a <strong>membership test</strong> that yields the
+member itself. <code>s[0]</code> is undefined for the same reason: <code>0</code> is not in the
+set.</figcaption>
+</figure>
+
+<p>So a set has no positions to ask for, and the index/value pair collapses:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval 'some i, v in {"a", "b"}; [i, v]' --format pretty
+┌─────┬─────┬───────────┐
+│  i  │  v  │  [i, v]   │
+├─────┼─────┼───────────┤
+│ "a" │ "a" │ ["a","a"] │
+│ "b" │ "b" │ ["b","b"] │
+└─────┴─────┴───────────┘</code></pre>
+<figcaption>Verified output. For a set, key <em>is</em> value. For an object, the pair is
+<em>key, value</em>; for an array, <em>index, value</em>. One syntax, three collections, and it
+always means "the two halves of a membership".</figcaption>
+</figure>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">Given <code>s := {10, 20, 30}</code>, what does <code>s[1]</code>
+  evaluate to?</p>
+  <ul class="quiz-options">
+    <li data-correct>Undefined, since 1 is absent</li>
+    <li>The number 20, being second</li>
+    <li>The number 10, being first</li>
+    <li>A type error about the index</li>
+  </ul>
+  <div class="quiz-explain">Brackets on a set test membership and yield the member. There is no
+  member <code>1</code>, so the expression is undefined — silently, the way every absence in Rego
+  is silent. <code>s[10]</code> would give you <code>10</code>.</div>
+</div>
+
+<h2>8 · "Any" is free. "All" needs a keyword.</h2>
+
+<p>Notice what section 3's rule actually says: <em>there exists a container whose image floats</em>.
+That existential reading is what iteration gives you for nothing, and it is what a
+<code>deny</code> rule almost always wants — one message per offender, each naming its
+offender.</p>
+
+<p>The other quantifier is a separate keyword, <code>every</code><a href="#src-2">²</a>, and it
+does not fit in a <code>deny</code> body directly: <code>deny</code> wants a reason to fire, and
+<code>every</code> holds when everything is <em>fine</em>. So it goes in a helper — lesson 4's
+third OR spelling, doing a new job — and the <code>deny</code> negates it:</p>
+
+<figure>
+<pre><code class="lang-rego">deny contains "every container must set a memory limit" if {
+	input.kind == "Deployment"
+	not every_limited
+}
+
+every_limited if every c in input.spec.template.spec.containers {
+	c.resources.limits.memory
+}</code></pre>
+<figcaption>Verified: denies the two-container Deployment where one limit is missing. Note it is
+one message for the whole workload — the offender's name is gone.</figcaption>
+</figure>
+
+<div class="key-idea">
+  <p><strong>Prefer <code>some</code> in a <code>deny</code> rule.</strong> The two versions catch
+  the same manifests; only the <code>some</code> version can tell you <em>which</em> container to
+  fix. Reach for <code>every</code> when the requirement genuinely is about the collection as a
+  whole and no single member is at fault.</p>
+</div>
+
+<p>Two facts about <code>every</code> that will bite someone on your team:</p>
+
+<ul>
+  <li><strong>It is true of an empty collection.</strong> <code>every x in [] { x &gt; 100 }</code>
+  evaluates to <code>true</code> — vacuously, as in every logic system. A workload with zero
+  containers satisfies every rule you can write with it.</li>
+  <li><strong>It is undefined over a missing key</strong>, so <code>not every_limited</code>
+  <em>holds</em>. Verified: given a Deployment with <code>container</code> misspelled, the
+  <code>every</code> policy denies it and the <code>some</code> policy passes it. The
+  <code>every</code> version fails closed, which is nicer — but it is a side effect of undefinedness,
+  not a guarantee you designed, and it does not survive the same typo appearing inside the
+  <code>some</code> rule next to it.</li>
+</ul>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">Which rule can name the specific container that broke the policy?</p>
+  <ul class="quiz-options">
+    <li data-correct>The one built on <code>some</code></li>
+    <li>The one built on <code>every</code></li>
+    <li>Neither of them can do that</li>
+    <li>Both, given <code>sprintf</code></li>
+  </ul>
+  <div class="quiz-explain">A <code>some</code> body runs once per binding, so the offending
+  container is bound to a variable and can be interpolated into that binding's message.
+  <code>every</code> yields one verdict about the whole collection, with nothing bound to
+  report.</div>
+</div>
+
+<div class="recall" data-recall="Answer from memory before revealing">
+  <p class="recall-q">A coworker writes this to ban privileged containers, tests it against a
+  manifest with one privileged container, and gets a pass. Diagnose it.</p>
+<pre><code class="lang-rego">deny contains msg if {
+	input.kind == "Deployment"
+	c := input.spec.template.spec.containers
+	c.securityContext.privileged == true
+	msg := sprintf("container %s is privileged", [c.name])
+}</code></pre>
+  <p class="recall-q">Then say what the report's summary line will read, and what would have
+  caught it.</p>
+  <div class="recall-answer">
+    <p><strong>Diagnosis:</strong> <code>c</code> is bound to the whole <em>array</em>, not to a
+    container. <code>c.securityContext</code> asks an array for a field it does not have, which is
+    undefined, so the body fails — for every input, always. There is no iteration here at all:
+    they wrote <code>:=</code> where they needed <code>some c in</code>. Fixing it is one word:
+    <code>some c in input.spec.template.spec.containers</code>.</p>
+    <p><strong>The summary line:</strong> <code>1 test, 1 passed, 0 warnings, 0 failures</code>,
+    exit 0. One definition, zero messages, so the subtraction reports a pass that never
+    happened.</p>
+    <p><strong>What catches it:</strong> a fixture that must be denied, run before the rule is
+    believed — the same answer as lesson 4, because it is the same failure mode. Worth noticing
+    that this is a fifth costume for the silent pass: not a missing key in the data this time, but
+    a correctly-spelled key asked of the wrong <em>kind</em> of value.</p>
+  </div>
+</div>
+
+<h2>Terminal drill</h2>
+
+<p>Twelve minutes. Step 4 is the one to slow down on — predict each summary line out loud before
+you press return, because that is the skill this lesson is really selling.</p>
+
+<ol class="drill" data-drill="rego-0005">
+  <li>
+    <p>Fresh exercise directory. Run from the workspace root.</p>
+<pre><code class="lang-shell">mkdir -p exercises/005/policy &amp;&amp; cd exercises/005</code></pre>
+  </li>
+  <li>
+    <p>One fixture with three containers, two of them wrong. Look at the parsed shape before
+    writing any Rego.</p>
+<pre><code class="lang-shell">cat &gt; deployment.yaml &lt;&lt;'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: myco/app:1.4.2
+        - name: sidecar
+          image: myco/logger:latest
+        - name: proxy
+          image: nginx:latest
+EOF
+
+conftest parse deployment.yaml</code></pre>
+  </li>
+  <li>
+    <p><strong>The variable, before the rule.</strong> Ask the engine the question directly and
+    watch one query return three rows. Then add a filter and watch it return two.</p>
+<pre><code class="lang-shell">opa eval -i deployment.yaml \
+  'name := input.spec.template.spec.containers[_].name' --format pretty
+
+opa eval -i deployment.yaml \
+  'some c in input.spec.template.spec.containers; endswith(c.image, ":latest"); c.name' --format pretty</code></pre>
+  </li>
+  <li>
+    <p><strong>The rule.</strong> Predict the summary line before you run it — how many tests, how
+    many passed.</p>
+<pre><code class="lang-shell">cat &gt; policy/images.rego &lt;&lt;'EOF'
+package main
+
+deny contains msg if {
+	some c in input.spec.template.spec.containers
+	endswith(c.image, ":latest")
+	msg := sprintf("container %s uses a floating tag: %s", [c.name, c.image])
+}
+EOF
+
+conftest test deployment.yaml; echo "exit=$?"</code></pre>
+  </li>
+  <li>
+    <p><strong>Name the position.</strong> Rewrite the rule with <code>some i, c in</code> and a
+    <code>%d</code> in the message. Confirm the indexes are the ones you expect, and notice that
+    the printed order still is not document order.</p>
+  </li>
+  <li>
+    <p><strong>Iterating over nothing.</strong> Break the path on purpose, then confirm the damage
+    is invisible.</p>
+<pre><code class="lang-shell">sed -i 's/containers$/container/' policy/images.rego
+conftest test deployment.yaml; echo "exit=$?"
+sed -i 's/container$/containers/' policy/images.rego</code></pre>
+  </li>
+  <li>
+    <p><strong>The safety error.</strong> Write the negation the wrong way round and read the
+    message carefully — it is the one iteration mistake the compiler will catch for you.</p>
+<pre><code class="lang-shell">cat &gt; policy/limits.rego &lt;&lt;'EOF'
+package main
+
+deny contains "a container has no memory limit" if {
+	not input.spec.template.spec.containers[_].resources.limits.memory
+}
+EOF
+
+conftest test deployment.yaml; echo "exit=$?"</code></pre>
+  </li>
+  <li>
+    <p><strong>Fix it.</strong> Rewrite <code>policy/limits.rego</code> so it binds
+    <code>some c in …</code> first and negates second, with a message naming the container. All
+    three containers should be denied, since none of them sets a limit — so add
+    <code>resources.limits.memory</code> to one of them and confirm the count drops to two.</p>
+  </li>
+  <li>
+    <p><strong>Sets have no positions.</strong> Convince yourself, with no policy file
+    involved.</p>
+<pre><code class="lang-shell">opa eval 's := {10, 20, 30}; s[1]' --format pretty
+opa eval 's := {10, 20, 30}; s[10]' --format pretty
+opa eval 'a := [10, 20, 30]; a[1]' --format pretty</code></pre>
+  </li>
+  <li>
+    <p>Now yours — no snippet. Write the memory-limit check a second time using
+    <code>every</code> in a helper, keep both versions in the directory, and run them against a
+    manifest where exactly one container is missing a limit. Compare the two reports and say which
+    one you would put in front of a team, and why. Then predict what each does when
+    <code>containers</code> is an empty list — and check. (Ask me if either surprises you.)</p>
+  </li>
+</ol>
+
+<div class="ask-teacher">
+  <strong>I am your teacher for this, not just the author of the page.</strong> Ask me anything in
+  the session: how two <code>some</code> lines in one body behave (nested, and useful for
+  containers × ports), what a comprehension is and when it beats a helper rule, why
+  <code>walk()</code> exists for documents whose depth you do not know, or how any of this changes
+  when the input is a Dockerfile — which is an array of instructions, so it is iteration all the
+  way down.
+</div>
+
+<footer class="colophon">
+
+  <h3>Read this next (primary source)</h3>
+  <p><a href="https://www.openpolicyagent.org/docs/policy-language#iteration">OPA Docs — Policy
+  Language, <em>Iteration</em></a>, and the <em>Variables</em> section just above it. Short, and
+  the source of the framing on this page: variables are how you ask questions of collections, not
+  how you step through them. Read <a
+  href="https://www.openpolicyagent.org/docs/policy-language#universal-quantification-for-all">Universal
+  Quantification</a> straight after for <code>every</code> — it is honest about the fact that "for
+  all" is the awkward direction in a language built on "there exists".</p>
+
+  <h3>Main takeaways</h3>
+  <ul>
+    <li><strong>A variable in a reference is the loop.</strong> <code>some c in xs</code> asks "for
+    which <code>c</code>?" and the engine returns every answer. No order, no
+    <code>break</code>, no accumulator, no <code>continue</code>.</li>
+    <li>A body with a free variable is evaluated <strong>once per binding</strong>, so one rule
+    definition can add many members to the set — one message per offender, each naming it.</li>
+    <li>Three spellings, all current: <code>some c in xs</code> (the default),
+    <code>xs[_]</code> (compact, and preferred for deeply nested paths), <code>some i, c in xs</code>
+    (when the position belongs in the message). The wildcard is <strong>not deprecated</strong> and
+    Regal does not flag it; <code>some</code> is preferred because brackets are ambiguous between
+    iteration and membership. An undeclared <em>named</em> variable is the one Regal rejects.</li>
+    <li><strong>Conftest's count changes meaning once a rule iterates:</strong> failures = messages;
+    passed = definitions − failures, floored at zero. Only the failure count is measured.</li>
+    <li>Iterating a missing or misspelled path yields <strong>zero bindings and a clean
+    pass</strong> — the fourth silent pass in this course. Absence is silence, not failure.</li>
+    <li>Negating an iterating expression is a <strong>compile error</strong>
+    (<code>rego_unsafe_var_error</code>). Bind with <code>some</code> first, negate second.</li>
+    <li>On a set, <code>s[x]</code> is a <strong>membership test yielding <code>x</code></strong>,
+    not indexing: <code>{1,2,3}[2]</code> is <code>2</code>. In <code>some i, v in</code>, a set's
+    key <em>is</em> its value.</li>
+    <li><code>every</code> supplies "for all", usually via a helper the <code>deny</code> negates.
+    It is vacuously true on an empty collection, undefined on a missing one, and it cannot name the
+    member that broke the rule.</li>
+  </ul>
+
+  <h3>Reference</h3>
+  <ul>
+    <li><a href="../reference/0001-glossary.html">Glossary</a> — see the <em>Iteration</em>
+    section, plus <em>binding</em>, <em>output variable</em>, <em>safety</em> and <em>set</em>.</li>
+    <li><a href="../reference/0003-conftest-cheatsheet.html">Conftest cheat sheet</a> — the
+    contract, and <code>conftest parse</code> for finding the path you are about to iterate.</li>
+    <li><a href="../reference/0002-opa-cli-cheatsheet.html">OPA CLI cheat sheet</a> — for
+    <code>opa eval</code>, which is how you check a path before committing a rule to it.</li>
+  </ul>
+
+  <h3>Sources</h3>
+  <ul>
+    <li id="src-1"><a href="https://www.openpolicyagent.org/docs/policy-language">OPA Docs — Policy
+    Language</a>: <em>Variables</em>, <em>Iteration</em>, and <em>Safety</em> (every variable must
+    appear in a non-negated expression).</li>
+    <li id="src-2"><a
+    href="https://www.openpolicyagent.org/docs/policy-language#universal-quantification-for-all">OPA
+    Docs — Universal Quantification (FOR ALL)</a>: the <code>every</code> keyword, and the
+    negation-of-existence pattern it replaced.</li>
+    <li id="src-4"><a href="https://github.com/open-policy-agent/rego-style-guide#prefer-some--in-for-iteration">Rego
+    Style Guide — <em>Prefer <code>some .. in</code> for iteration</em></a>, and
+    <em><a href="https://github.com/open-policy-agent/rego-style-guide#dont-use-undeclared-variables">Don't
+    use undeclared variables</a></em>: the ambiguity argument, the deeply-nested exception, and
+    <code>topics[_]</code> listed as an accepted fix for an undeclared variable.</li>
+    <li id="src-5"><a href="https://github.com/open-policy-agent/opa/releases/tag/v0.34.0">OPA
+    v0.34.0 release notes</a>: the release that added <code>in</code> for membership and iteration,
+    behind <code>import future.keywords.in</code>; made unconditional in
+    <a href="https://www.openpolicyagent.org/docs/v0-upgrade">OPA v1.0</a>.</li>
+    <li id="src-3"><a
+    href="https://www.openpolicyagent.org/projects/regal/rules/idiomatic/use-some-for-output-vars">Regal
+    — <code>use-some-for-output-vars</code></a>: the idiomatic-category rule behind section 5's
+    advice. Verified locally against Regal 0.42.0.</li>
+    <li>All command output on this page was executed on this machine against OPA 1.19.0 and
+    conftest (dev build, OPA 1.19.0) and pasted verbatim. The summary-line arithmetic in section 3
+    was derived by running five policy/document configurations and fitting the numbers.</li>
+  </ul>
+
+  <h3>When you want a second opinion</h3>
+  <p>"Should this be <code>some</code> or <code>every</code>?" and "is a comprehension clearer here
+  than a helper?" are taste questions, and taste is what a community is for. The
+  <code>#help</code> channel of <a href="https://slack.openpolicyagent.org/">OPA Slack</a> and
+  <a href="https://github.com/orgs/open-policy-agent/discussions">OPA Community Discussions</a>
+  will read a policy and tell you how it lands — paste it as a
+  <a href="https://play.openpolicyagent.org/">Rego Playground</a> link.</p>
+
+  <p class="crumb"><a href="../index.html">↑ Back to the course index</a></p>
+
+</footer>
+
+</main>
+
+<script src="../../assets/syntax-highlight-rego.js"></script>
+<script src="../../assets/quiz-multiple-choice.js"></script>
+<script src="../../assets/recall-prompt.js"></script>
+<script src="../../assets/drill-checklist.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>
