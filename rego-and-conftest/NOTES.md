@@ -24,6 +24,12 @@ unless marked otherwise; `(sN)` = session N.
   (it is not). → **Never let a comparative adjective stand in for a citation.** Say *by whom* and
   *why* a form is preferred, and whether the other is still valid. Check Regal on *both* sides of
   a style claim, not just the criticised side.
+- **Reads for ordering, not just correctness** (s7): reviewed lesson 5 and rejected three
+  placements — a key-idea box quoting `some … in` before the notation appeared, a verdict callout
+  wedged between a code block and the explanation of that block's last item, and OPA release
+  chronology as support for a style claim. → **Nothing may judge or quote a thing before the thing
+  is on the page**, and background that does not change what the learner writes gets cut, however
+  true. Verdicts come after the walkthrough, not inside the code comments.
 - Conventions: practice files in `exercises/NNN/` **inside the workspace**, plain zero-padded, no
   suffix, never overwrite an existing dir. Brings own example code (lesson 2's `package signup`
   snippet was theirs verbatim) — use what they hand over, verify it runs first. Hand-formats
@@ -63,6 +69,15 @@ and 3 reference pages, but not `index.html`. `rego-and-or-grid.css` added by les
    as the one iteration mistake the compiler catches, set-has-no-positions (closes LR-0005 debt),
    `every` in a helper with the "prefer `some`, it names the offender" judgement. Glossary gained
    **Iteration**; no new shared asset.
+   **Re-ordered in s7** on the user's review. Sections now: 1 wall · 2 variable · 3 rule · 4 for-loop
+   misleads · 5 sets have no positions · 6 other spellings · 7 iterating over nothing · 8 `every`.
+   Every forward reference is gone: sets now precede the spellings section it grounds (the brackets
+   ambiguity argument), and "iterating over nothing" sits next to `every`'s undefined-on-missing
+   mirror. §2 demos `some c in …; c.name` (was the wildcard) so the key-idea box quotes code already
+   shown, and its two-column output shows `c` bound to a whole container — pre-empting the recall
+   prompt's whole-array bug. §3 opens by adding `endswith` to that same query (3 rows → 2) so the
+   rule body arrives as "the query you already wrote". Cut: the OPA v0.34.0 chronology and `src-5`.
+   The wildcard verdict and the deeply-nested callout now follow all three forms' walkthroughs.
 
 Sequence was changed by the user after lesson 2 (LR-0004): go straight to conftest, deferring the
 fundamentals items that became lessons 4–5.

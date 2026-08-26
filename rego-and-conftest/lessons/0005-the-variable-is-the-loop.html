@@ -77,23 +77,26 @@ knowing there are three.</figcaption>
 
 <h2>2 · There is no loop. There is a variable.</h2>
 
-<p>The path <code>input.spec.template.spec.containers</code> names the whole array. Put a
-<em>variable</em> where the position would go, and you have asked a different kind of question:</p>
+<p>The path <code>input.spec.template.spec.containers</code> names the whole array — one value.
+Introduce a <em>variable</em> and say it ranges over that array, and you have asked a different
+kind of question:</p>
 
 <figure>
-<pre><code class="lang-shell">$ opa eval -i deployment.yaml 'name := input.spec.template.spec.containers[_].name' --format pretty
-┌───────────┐
-│   name    │
-├───────────┤
-│ "app"     │
-│ "sidecar" │
-│ "proxy"   │
-└───────────┘</code></pre>
-<figcaption>Verified output. One query. Three answers. Nothing looped — the engine
-<em>solved</em> for every binding that makes the expression hold, and reported each solution as
-a row. (<code>opa eval -i</code> reads YAML as happily as JSON, so there is no conversion step —
-<code>conftest parse</code> above was for <em>looking</em> at the shape, not for producing a
-file.)</figcaption>
+<pre><code class="lang-shell">$ opa eval -i deployment.yaml \
+    'some c in input.spec.template.spec.containers; c.name' --format pretty
+┌─────────────────────────────────────────────────┬───────────┐
+│                        c                        │  c.name   │
+├─────────────────────────────────────────────────┼───────────┤
+│ {"image":"myco/app:1.4.2","name":"app"}         │ "app"     │
+│ {"image":"myco/logger:latest","name":"sidecar"} │ "sidecar" │
+│ {"image":"nginx:latest","name":"proxy"}         │ "proxy"   │
+└─────────────────────────────────────────────────┴───────────┘</code></pre>
+<figcaption>Verified output. One query, three rows — and the left column is the point:
+<code>c</code> is bound to a whole container <em>object</em>, a different one per row. Nothing
+looped. The engine <em>solved</em> for every value of <code>c</code> that makes the expression
+hold, and reported each solution as a row. (<code>opa eval -i</code> reads YAML as happily as JSON,
+so there is no conversion step — <code>conftest parse</code> above was for <em>looking</em> at the
+shape, not for producing a file.)</figcaption>
 </figure>
 
 <div class="key-idea">
@@ -110,8 +113,23 @@ variable</em><a href="#src-1">¹</a>, because the query hands it back to you fil
 
 <h2>3 · One rule, one message per offender</h2>
 
-<p>Now put it in a rule. The idiomatic spelling declares the variable with
-<code>some … in</code>:</p>
+<p>Add a second condition to that same query, and the answer set shrinks:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval -i deployment.yaml \
+    'some c in input.spec.template.spec.containers; endswith(c.image, ":latest"); c.name' --format pretty
+┌─────────────────────────────────────────────────┬───────────┐
+│                        c                        │  c.name   │
+├─────────────────────────────────────────────────┼───────────┤
+│ {"image":"myco/logger:latest","name":"sidecar"} │ "sidecar" │
+│ {"image":"nginx:latest","name":"proxy"}         │ "proxy"   │
+└─────────────────────────────────────────────────┴───────────┘</code></pre>
+<figcaption>Verified output. Three bindings went in, two came out. The engine has already found
+the offending containers — and it did so before any rule existed.</figcaption>
+</figure>
+
+<p>Which is the whole trick: <strong>the rule body <em>is</em> that query</strong>. All a rule adds
+is a name to file the answers under, and a message built from each binding:</p>
 
 <figure>
   <p class="code-label">policy/images.rego</p>
@@ -127,7 +145,8 @@ deny contains msg if {
 <p>Read it with <a href="0004-and-down-or-sideways.html">lesson 4</a>'s model and nothing is new:
 three expressions, so AND. What <em>is</em> new is that the first expression has three solutions,
 so the whole body is tried three times — once per binding of <code>c</code>. Two of those tries
-survive the second expression:</p>
+survive the second expression, and each survivor builds its own message out of its own
+<code>c</code>:</p>
 
 <figure>
 <pre><code class="lang-shell">$ conftest test deployment.yaml
@@ -209,38 +228,96 @@ a question a coworker will ask, and the answer is the same sentence from section
 <p>There is no <code>continue</code> either, and no need for one: a binding whose body fails simply
 contributes nothing. Skipping is the default, not a statement you write.</p>
 
-<h2>5 · The other spellings you will read</h2>
+<h2>5 · Sets have no positions</h2>
 
-<p>Three ways to write the same iteration. All three are current, supported Rego — nothing here
-is deprecated — but they do not read equally well, and the style guide has a clear default.</p>
+<p>That first row is worth pushing on. The bindings have no order — and neither does the set that
+collects them. Lesson 2 left you with "a set is an array without duplicates or order", which is
+enough to write rules with, and it breaks exactly here, the first time you index one:</p>
 
 <figure>
-<pre><code class="lang-rego"># 1. some ... in  — the default
+<pre><code class="lang-shell">$ opa eval 's := {1, 2, 3}; s[0]' --format pretty
+undefined
+$ opa eval 's := {1, 2, 3}; s[2]' --format pretty
+┌─────────┬──────┐
+│    s    │ s[2] │
+├─────────┼──────┤
+│ [1,2,3] │ 2    │
+└─────────┴──────┘</code></pre>
+<figcaption>Verified output. <code>s[2]</code> did not return the third element. It returned
+<code>2</code> — because on a set, brackets are a <strong>membership test</strong> that yields the
+member itself. <code>s[0]</code> is undefined for the same reason: <code>0</code> is not in the
+set.</figcaption>
+</figure>
+
+<p>So a set has no positions to ask for, and the index/value pair collapses:</p>
+
+<figure>
+<pre><code class="lang-shell">$ opa eval 'some i, v in {"a", "b"}; [i, v]' --format pretty
+┌─────┬─────┬───────────┐
+│  i  │  v  │  [i, v]   │
+├─────┼─────┼───────────┤
+│ "a" │ "a" │ ["a","a"] │
+│ "b" │ "b" │ ["b","b"] │
+└─────┴─────┴───────────┘</code></pre>
+<figcaption>Verified output. For a set, key <em>is</em> value. For an object, the pair is
+<em>key, value</em>; for an array, <em>index, value</em>. One syntax, three collections, and it
+always means "the two halves of a membership".</figcaption>
+</figure>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">Given <code>s := {10, 20, 30}</code>, what does <code>s[1]</code>
+  evaluate to?</p>
+  <ul class="quiz-options">
+    <li data-correct>Undefined, since 1 is absent</li>
+    <li>The number 20, being second</li>
+    <li>The number 10, being first</li>
+    <li>A type error about the index</li>
+  </ul>
+  <div class="quiz-explain">Brackets on a set test membership and yield the member. There is no
+  member <code>1</code>, so the expression is undefined — silently, the way every absence in Rego
+  is silent. <code>s[10]</code> would give you <code>10</code>.</div>
+</div>
+
+<h2>6 · The other spellings you will read</h2>
+
+<p>You have written one form. Two more do the same iteration, and you will meet both in other
+people's policies:</p>
+
+<figure>
+<pre><code class="lang-rego"># 1. some ... in
 some c in input.spec.template.spec.containers
 
-# 2. the wildcard — compact, and the winner for deeply nested paths
+# 2. the wildcard
 image := input.spec.template.spec.containers[_].image
 
-# 3. some with the index, when the message should name a position
+# 3. some, with the key as well as the value
 some i, c in input.spec.template.spec.containers</code></pre>
 </figure>
 
-<p><code>_</code> is an anonymous variable: a hole you never need to refer to again. Form 2 is the
-same mechanism with the name left out. It is <em>chronologically</em> the older of the two —
-<code>some … in</code> arrived in OPA v0.34.0 (2021) behind
-<code>import future.keywords.in</code> and became unconditional in v1.0<a href="#src-5">⁵</a> — but
-age is not the argument, and it is worth being precise about that because someone will ask.
-<strong>The wildcard is not deprecated, and Regal does not flag it</strong>, even with every rule
-enabled (verified locally, Regal 0.42.0).</p>
+<p>Form 2's <code>_</code> is an <strong>anonymous variable</strong> — a hole you never need to
+refer to again. It is form 1's mechanism with the name left out, which is why it can sit in the
+middle of a path instead of taking a line of its own.</p>
 
-<p>The real argument is <em>ambiguity</em>. The style guide's own reason for preferring form 1 is
-that brackets are overloaded: <a
+<p>Form 3 binds both halves of the membership, which for an array is <em>index, value</em> —
+exactly the pair section 5 just collapsed on a set:</p>
+
+<figure>
+<pre><code class="lang-shell">$ conftest test deployment.yaml    # with `some i, c in`, message using %d and i
+FAIL - deployment.yaml - main - containers[1] (sidecar) uses myco/logger:latest
+FAIL - deployment.yaml - main - containers[2] (proxy) uses nginx:latest</code></pre>
+<figcaption>Verified output. Worth the extra variable when a coworker has to find the offending
+block in a 300-line manifest.</figcaption>
+</figure>
+
+<p><strong>Prefer form 1 by default.</strong> Not because the wildcard is old or deprecated — it is
+current, supported Rego, and Regal does not flag it even with every rule enabled (verified locally
+against Regal 0.42.0). The argument is <em>ambiguity</em>, and it is the style guide's own: <a
 href="https://github.com/open-policy-agent/rego-style-guide#prefer-some--in-for-iteration">"Using the
 <code>some</code> .. <code>in</code> construct for iteration removes ambiguity around iteration vs.
-membership checks, and is generally more pleasant to read."</a><a href="#src-4">⁴</a> Section 7
-below is that overloading in its purest form — on a set, <code>s[x]</code> is a membership test,
-not a lookup — so <code>containers[_]</code> and <code>roles["admin"]</code> are the same syntax
-doing two different jobs. <code>some</code> says which one you meant.</p>
+membership checks, and is generally more pleasant to read."</a><a href="#src-4">⁴</a> Section 5 was
+that overloading in its purest form — on a set, <code>s[x]</code> is a membership test, not a
+lookup — so <code>containers[_]</code> and <code>roles["admin"]</code> are the same syntax doing two
+different jobs. <code>some</code> says which one you meant.</p>
 
 <div class="callout good">
   <p class="callout-title">Where the wildcard wins outright</p>
@@ -260,16 +337,6 @@ hostname := server.hostname</code></pre>
   scaffolding on the way to a leaf does not.</p>
 </div>
 
-<p>Form 3 binds both halves of the pair — for an array that is <em>index, value</em>:</p>
-
-<figure>
-<pre><code class="lang-shell">$ conftest test deployment.yaml    # with `some i, c in`, message using %d and i
-FAIL - deployment.yaml - main - containers[1] (sidecar) uses myco/logger:latest
-FAIL - deployment.yaml - main - containers[2] (proxy) uses nginx:latest</code></pre>
-<figcaption>Verified output. Worth the extra variable when a coworker has to find the offending
-block in a 300-line manifest.</figcaption>
-</figure>
-
 <p class="note">A fourth form is the one to actually avoid: an undeclared <em>named</em> variable
 in a reference, <code>containers[i].image</code> with no <code>some i</code>. It iterates just the
 same, and Rego v1 still allows it, but this is the form Regal does flag —
@@ -279,10 +346,10 @@ href="#src-4">⁴</a>. That is the sharpest evidence that the wildcard is idioma
 <code>i</code> is not: with <code>_</code> the reader can see there is nothing to track, whereas a
 named <code>i</code> from nowhere could have been bound anywhere above.</p>
 
-<h2>6 · Iterating over nothing</h2>
+<h2>7 · Iterating over nothing</h2>
 
-<p>Give that rule a document with no <code>containers</code> key — a Service, or a Deployment
-with the path misspelled:</p>
+<p>Give section 3's rule a document with no <code>containers</code> key — a Service, or a
+Deployment with the path misspelled:</p>
 
 <figure>
 <pre><code class="lang-shell">$ conftest test service.yaml
@@ -333,55 +400,6 @@ first, negate second:</p>
 exactly one container, by name.</figcaption>
 </figure>
 
-<h2>7 · Sets have no positions</h2>
-
-<p>Lesson 2 left you with "a set is an array without duplicates or order". That is enough to write
-rules with, and it breaks exactly here, the first time you index one:</p>
-
-<figure>
-<pre><code class="lang-shell">$ opa eval 's := {1, 2, 3}; s[0]' --format pretty
-undefined
-$ opa eval 's := {1, 2, 3}; s[2]' --format pretty
-┌─────────┬──────┐
-│    s    │ s[2] │
-├─────────┼──────┤
-│ [1,2,3] │ 2    │
-└─────────┴──────┘</code></pre>
-<figcaption>Verified output. <code>s[2]</code> did not return the third element. It returned
-<code>2</code> — because on a set, brackets are a <strong>membership test</strong> that yields the
-member itself. <code>s[0]</code> is undefined for the same reason: <code>0</code> is not in the
-set.</figcaption>
-</figure>
-
-<p>So a set has no positions to ask for, and the index/value pair collapses:</p>
-
-<figure>
-<pre><code class="lang-shell">$ opa eval 'some i, v in {"a", "b"}; [i, v]' --format pretty
-┌─────┬─────┬───────────┐
-│  i  │  v  │  [i, v]   │
-├─────┼─────┼───────────┤
-│ "a" │ "a" │ ["a","a"] │
-│ "b" │ "b" │ ["b","b"] │
-└─────┴─────┴───────────┘</code></pre>
-<figcaption>Verified output. For a set, key <em>is</em> value. For an object, the pair is
-<em>key, value</em>; for an array, <em>index, value</em>. One syntax, three collections, and it
-always means "the two halves of a membership".</figcaption>
-</figure>
-
-<div class="quiz" data-quiz>
-  <p class="quiz-q">Given <code>s := {10, 20, 30}</code>, what does <code>s[1]</code>
-  evaluate to?</p>
-  <ul class="quiz-options">
-    <li data-correct>Undefined, since 1 is absent</li>
-    <li>The number 20, being second</li>
-    <li>The number 10, being first</li>
-    <li>A type error about the index</li>
-  </ul>
-  <div class="quiz-explain">Brackets on a set test membership and yield the member. There is no
-  member <code>1</code>, so the expression is undefined — silently, the way every absence in Rego
-  is silent. <code>s[10]</code> would give you <code>10</code>.</div>
-</div>
-
 <h2>8 · "Any" is free. "All" needs a keyword.</h2>
 
 <p>Notice what section 3's rule actually says: <em>there exists a container whose image floats</em>.
@@ -421,11 +439,11 @@ one message for the whole workload — the offender's name is gone.</figcaption>
   evaluates to <code>true</code> — vacuously, as in every logic system. A workload with zero
   containers satisfies every rule you can write with it.</li>
   <li><strong>It is undefined over a missing key</strong>, so <code>not every_limited</code>
-  <em>holds</em>. Verified: given a Deployment with <code>container</code> misspelled, the
-  <code>every</code> policy denies it and the <code>some</code> policy passes it. The
-  <code>every</code> version fails closed, which is nicer — but it is a side effect of undefinedness,
-  not a guarantee you designed, and it does not survive the same typo appearing inside the
-  <code>some</code> rule next to it.</li>
+  <em>holds</em> — the mirror image of section 7. Verified: given a Deployment with
+  <code>containers</code> misspelled, the <code>every</code> policy denies it and the
+  <code>some</code> policy passes it. The <code>every</code> version fails closed, which is nicer —
+  but it is a side effect of undefinedness, not a guarantee you designed, and it does not survive
+  the same typo appearing inside the <code>some</code> rule next to it.</li>
 </ul>
 
 <div class="quiz" data-quiz>
@@ -503,9 +521,10 @@ conftest parse deployment.yaml</code></pre>
   </li>
   <li>
     <p><strong>The variable, before the rule.</strong> Ask the engine the question directly and
-    watch one query return three rows. Then add a filter and watch it return two.</p>
+    watch one query return three rows. Then add the filter and watch it return two — at which
+    point you have written the rule body without writing a rule.</p>
 <pre><code class="lang-shell">opa eval -i deployment.yaml \
-  'name := input.spec.template.spec.containers[_].name' --format pretty
+  'some c in input.spec.template.spec.containers; c.name' --format pretty
 
 opa eval -i deployment.yaml \
   'some c in input.spec.template.spec.containers; endswith(c.image, ":latest"); c.name' --format pretty</code></pre>
@@ -599,20 +618,20 @@ opa eval 'a := [10, 20, 30]; a[1]' --format pretty</code></pre>
     <code>break</code>, no accumulator, no <code>continue</code>.</li>
     <li>A body with a free variable is evaluated <strong>once per binding</strong>, so one rule
     definition can add many members to the set — one message per offender, each naming it.</li>
+    <li><strong>Conftest's count changes meaning once a rule iterates:</strong> failures = messages;
+    passed = definitions − failures, floored at zero. Only the failure count is measured.</li>
+    <li>On a set, <code>s[x]</code> is a <strong>membership test yielding <code>x</code></strong>,
+    not indexing: <code>{1,2,3}[2]</code> is <code>2</code>. In <code>some i, v in</code>, a set's
+    key <em>is</em> its value.</li>
     <li>Three spellings, all current: <code>some c in xs</code> (the default),
     <code>xs[_]</code> (compact, and preferred for deeply nested paths), <code>some i, c in xs</code>
     (when the position belongs in the message). The wildcard is <strong>not deprecated</strong> and
     Regal does not flag it; <code>some</code> is preferred because brackets are ambiguous between
     iteration and membership. An undeclared <em>named</em> variable is the one Regal rejects.</li>
-    <li><strong>Conftest's count changes meaning once a rule iterates:</strong> failures = messages;
-    passed = definitions − failures, floored at zero. Only the failure count is measured.</li>
     <li>Iterating a missing or misspelled path yields <strong>zero bindings and a clean
     pass</strong> — the fourth silent pass in this course. Absence is silence, not failure.</li>
     <li>Negating an iterating expression is a <strong>compile error</strong>
     (<code>rego_unsafe_var_error</code>). Bind with <code>some</code> first, negate second.</li>
-    <li>On a set, <code>s[x]</code> is a <strong>membership test yielding <code>x</code></strong>,
-    not indexing: <code>{1,2,3}[2]</code> is <code>2</code>. In <code>some i, v in</code>, a set's
-    key <em>is</em> its value.</li>
     <li><code>every</code> supplies "for all", usually via a helper the <code>deny</code> negates.
     It is vacuously true on an empty collection, undefined on a missing one, and it cannot name the
     member that broke the rule.</li>
@@ -642,10 +661,6 @@ opa eval 'a := [10, 20, 30]; a[1]' --format pretty</code></pre>
     <em><a href="https://github.com/open-policy-agent/rego-style-guide#dont-use-undeclared-variables">Don't
     use undeclared variables</a></em>: the ambiguity argument, the deeply-nested exception, and
     <code>topics[_]</code> listed as an accepted fix for an undeclared variable.</li>
-    <li id="src-5"><a href="https://github.com/open-policy-agent/opa/releases/tag/v0.34.0">OPA
-    v0.34.0 release notes</a>: the release that added <code>in</code> for membership and iteration,
-    behind <code>import future.keywords.in</code>; made unconditional in
-    <a href="https://www.openpolicyagent.org/docs/v0-upgrade">OPA v1.0</a>.</li>
     <li id="src-3"><a
     href="https://www.openpolicyagent.org/projects/regal/rules/idiomatic/use-some-for-output-vars">Regal
     — <code>use-some-for-output-vars</code></a>: the idiomatic-category rule behind section 5's
