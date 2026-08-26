@@ -70,20 +70,10 @@ conftest, so items 3–5 below were deferred past the wrapper.
 
 ## Open threads to check on next session
 
-- **Lesson 4 has no learning record yet** — it shipped at the end of session 4 with no evidence of
-  what landed. Next session: check `exercises/004/`, and specifically ask about drill steps 7 and 8
-  (collapse to `in`, then to a helper) and step 9's "defend the choice", since the three-spellings
-  call is the only judgement question in the lesson.
 - Lesson 4 now handles `else` and `default` in a single note under section 6 (both are
   complete-rule constructs, so neither applies to `deny`). If pushed on `else`, the extra fact is
   that it fixes evaluation order, and the one real use is guarding an expensive call such as
   `http.send` behind a cache check.
-- **The user supplies source material mid-session.** Session 4: they pasted the full Styra OR
-  article after I failed to fetch it from web.archive.org, unprompted. Second instance of them
-  bringing material to the lesson (see the `package signup` snippet, LR-0004). When a fetch fails,
-  say which document I wanted and why — they may well have it.
-- Nothing outstanding from lessons 1–3. Evidence gathered session 3; LR-0005 (lesson 2 content)
-  and LR-0006 (lesson 3 content) close this thread.
 - Carry forward into later lessons, not now: sharpen set-vs-array at the iteration lesson
   (LR-0005), and fold `--fail-on-warn`'s exit-code renumbering and `--all-namespaces`'s limits
   into the CI lesson (LR-0006). Reference 3 already carries both facts.
@@ -169,6 +159,16 @@ Everything below was run on this machine and is already baked into lesson 3 / re
   combinations session 3: without it, warn-only → 0 and failures → 1; with it, warn-only → **1**
   and failures → **2**. Any CI step keying on `== 1` silently changes meaning when someone adds
   the flag. Reference 3's exit-code table and a callout now carry this.
+
+## Rego facts verified session 5
+
+- **`not x in s` parses as `not (x in s)`** — verified with a `Service` against
+  `not input.kind in {"Deployment", "StatefulSet"}`, which held. No parenthesising needed in v1.
+- **`in` works over an array as well as a set** (`input.kind in ["Deployment", "StatefulSet"]`).
+  The set literal is the idiomatic choice, not a requirement.
+- **Any `:=` with an undefined right-hand side kills the body**, not just `sprintf`: a bare
+  `x := input.missing.deep` makes the rule undefined regardless of what follows. The generalisation
+  to offer when the `sprintf` case comes up again.
 
 ## Rego facts verified session 4 (baked into lesson 4)
 
