@@ -89,6 +89,9 @@
   }
 
   function build(quiz, index) {
+    // The stylesheet keys off .quiz; the JS keys off [data-quiz].
+    // Add the class ourselves so the attribute alone is enough to get a working widget.
+    quiz.classList.add("quiz");
     var list = quiz.querySelector(".quiz-options");
     if (!list) return;
 

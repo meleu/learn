@@ -1,4 +1,4 @@
-/* syntax-highlight-rego.js — Tiny dependency-free syntax highlighter for the languages that show up in policy-as-code lessons: rego, json, yaml, dockerfile and shell. Highlights <pre><code class="lang-XXX"> blocks. */
+/* syntax-highlight-code.js — Tiny dependency-free syntax highlighter for the languages that show up across these lessons: rego, json, yaml, dockerfile and shell. Highlights <pre><code class="lang-XXX"> blocks. */
 
 (function () {
   "use strict";
@@ -118,7 +118,7 @@
       return tokenize(src, protect, function (chunk) {
         return esc(chunk)
           .replace(/^(\s*)\$ /gm, '$1<span class="tok-prompt">$ </span>')
-          .replace(/\b(opa|conftest|kubectl|docker|helm|git|jq|curl)\b/g, '<span class="tok-keyword">$1</span>')
+          .replace(/\b(opa|conftest|kubectl|docker|helm|git|jq|curl|gpg|gpg2|pass|gopass|bw|wl-copy|xclip|ssh|scp|rsync)\b/g, '<span class="tok-keyword">$1</span>')
           .replace(/(^|\s)(--?[a-zA-Z][\w-]*)/g, '$1<span class="tok-builtin">$2</span>');
       });
     }

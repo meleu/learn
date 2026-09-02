@@ -106,6 +106,9 @@
   }
 
   function build(drill) {
+    // The stylesheet keys off .drill; the JS keys off [data-drill].
+    // Add the class ourselves so the attribute alone is enough to get a working widget.
+    drill.classList.add("drill");
     var key = "drill:" + (drill.dataset.drill || "unnamed");
     var state = read(key);
     var steps = Array.prototype.slice.call(drill.children).filter(function (n) {

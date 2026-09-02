@@ -84,6 +84,9 @@
   }
 
   function build(recall) {
+    // The stylesheet keys off .recall; the JS keys off [data-recall].
+    // Add the class ourselves so the attribute alone is enough to get a working widget.
+    recall.classList.add("recall");
     if (!recall.querySelector(".recall-label")) {
       var label = document.createElement("p");
       label.className = "recall-label";
