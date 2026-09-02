@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 01 · The key pass actually uses</title>
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" href="../../assets/flow-boxes.css">
+</head>
+<body>
+<main class="sheet">
+
+<p class="crumb"><a href="../MISSION.md">GPG &amp; pass</a> → Lesson 01</p>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 01 · Knowledge</p>
+  <h1>The key <code>pass</code> actually uses</h1>
+  <p class="standfirst">You already have a GPG key and a password store. This lesson does not
+  create anything — it opens the box you already own and shows you that nothing inside it is magic.</p>
+</header>
+
+<p>The reason <code>pass</code> felt uncomfortable is not that its commands are hard. Its
+commands are trivial. The discomfort comes from handing real credentials to a layer you
+cannot see into. So we start there: by the end of this page you will be able to point at a
+specific line of <code>gpg</code> output and say <em>that</em> is the key protecting my
+passwords — and then prove it from the ciphertext itself.</p>
+
+<div class="key-idea">
+  <p><strong>One asymmetry, and everything follows.</strong> The <em>public</em> key locks a
+  secret. The <em>private</em> key unlocks it. That is the whole trick. It means
+  <code>pass insert</code> never needs your passphrase — writing a secret only requires the
+  public half — while <code>pass show</code> always does.</p>
+</div>
+
+<p class="note margin">If you have ever wondered why <code>pass insert</code> is instant but
+<code>pass show</code> pops a pinentry prompt: this is why. Adding is a public operation.
+Reading is a private one.</p>
+
+<h2>Step one: read your own key</h2>
+
+<p>Run this. The flags matter — the defaults hide exactly the things we care about.</p>
+
+<p class="code-label">terminal</p>
+<pre><code class="lang-shell">$ gpg --list-keys --with-subkey-fingerprints --keyid-format=long</code></pre>
+
+<p>You will get something shaped like this. The key IDs will be yours, not these —
+every hex string on this page is a fabricated example:</p>
+
+<pre><code class="lang-shell">pub   ed25519/4C7B1E9A05D3F268 2026-01-15 [SC]
+      A3F92D1B7C4E60885B0D2A944C7B1E9A05D3F268
+uid                 [ultimate] Ada Byron &lt;ada@example.com&gt;
+sub   cv25519/D82A6F14B90C7E35 2026-01-15 [E]
+      61B45E8027FA3D19C6E08B72D82A6F14B90C7E35</code></pre>
+
+<p>Five lines, four ideas. Take them one at a time — and if a word here is unfamiliar,
+the <a href="../reference/0001-glossary.html">glossary</a> defines all of them in one place.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Line</th><th>What it is</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>pub</code></td>
+      <td>The <strong>primary key</strong>, public half. This <em>is</em> your identity in
+      OpenPGP terms. Everything else in the block hangs off it.</td>
+    </tr>
+    <tr>
+      <td><code>ed25519/2DA6…9007</code></td>
+      <td>Algorithm, then the <strong>long key ID</strong> — a 16-hex-digit handle for the key.</td>
+    </tr>
+    <tr>
+      <td>the 40-hex line</td>
+      <td>The <strong>fingerprint</strong>: the full, unambiguous name of the key. Look
+      closely — the key ID above is simply its last 16 characters.</td>
+    </tr>
+    <tr>
+      <td><code>uid</code></td>
+      <td>A <strong>user ID</strong>: the human label bound to the key. <code>[ultimate]</code>
+      is how much you trust it, and you made it, so: ultimately.</td>
+    </tr>
+    <tr>
+      <td><code>sub</code></td>
+      <td>A <strong>subkey</strong>. A second, separate keypair, cryptographically bound to
+      the primary. Note its algorithm and fingerprint are entirely different.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>You typed <code>gpg --full-generate-key</code> once and got <em>two</em> keypairs. That
+surprise is the first thing to clear up.</p>
+
+<h2>Step two: the bracketed letters are the whole story</h2>
+
+<p><code>[SC]</code> and <code>[E]</code> are not decoration. They are the key's
+<strong>capabilities</strong> — what GPG is permitted to use each key for. GnuPG ships the
+legend on your own disk, at <code>/usr/share/doc/gnupg/DETAILS</code>:</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Letter</th><th>Capability</th><th>Means</th></tr></thead>
+  <tbody>
+    <tr><td><code>C</code></td><td>Certify</td><td>Can vouch for keys and user IDs — including its own subkeys.</td></tr>
+    <tr><td><code>S</code></td><td>Sign</td><td>Can produce signatures proving <em>you</em> wrote something.</td></tr>
+    <tr><td><code>E</code></td><td>Encrypt</td><td>Can have data locked to it.</td></tr>
+    <tr><td><code>A</code></td><td>Authenticate</td><td>Can prove identity to a service, e.g. as an SSH key.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>So your primary key certifies and signs. It <strong>cannot encrypt</strong>. Your subkey
+does exactly one thing: encrypt. GnuPG's own manual is blunt about this — "by default a
+primary key has no encryption capability."</p>
+
+<div class="callout">
+  <p class="callout-title">Why split them at all?</p>
+  <p>Because the two jobs have different lifetimes. The primary key is your permanent
+  identity — losing it means losing the name. The encryption subkey is a working tool: it can
+  be revoked and replaced without you becoming a different person. That separation is why
+  every GPG hygiene guide talks about subkeys, and it is the thing that will let you rotate
+  keys later without rebuilding your store's identity.</p>
+</div>
+
+<h2>Step three: prove which key holds your passwords</h2>
+
+<p>Here is the claim: <strong><code>pass</code> encrypts to the <code>[E]</code> subkey, not
+to the primary key you named.</strong> Do not take my word for it. Your store names its
+recipient by email address:</p>
+
+<p class="code-label">terminal</p>
+<pre><code class="lang-shell">$ cat ~/.password-store/.gpg-id
+ada@example.com</code></pre>
+
+<p>An email address — no key ID anywhere. Now ask the ciphertext itself who it was locked
+to. <code>--list-only</code> means GPG parses the packets without decrypting, so this needs
+no passphrase:</p>
+
+<p class="code-label">terminal</p>
+<pre><code class="lang-shell">$ gpg --list-packets --list-only ~/.password-store/email/fastmail.gpg
+:pubkey enc packet: version 3, algo 18, keyid D82A6F14B90C7E35</code></pre>
+
+<p class="note margin">Try this on any file in your store. Every one of them will name the
+same subkey. If a file ever names a key ID you do not recognise, someone else can read it —
+which is precisely the check you will use in the team-sharing lesson.</p>
+
+<p>Read that key ID again, then look back at your key listing. It is
+<strong><code>D82A6F14B90C7E35</code></strong> — the <code>sub … [E]</code> line. Not
+<code>4C7B1E9A05D3F268</code>. The chain runs like this:</p>
+
+<div class="flow">
+  <div class="box"><div class="t"><code>.gpg-id</code></div><div class="d">an email address</div></div>
+  <div class="arrow">→</div>
+  <div class="box"><div class="t">keyring lookup</div><div class="d">finds the <code>uid</code> that matches</div></div>
+  <div class="arrow">→</div>
+  <div class="box"><div class="t">primary key</div><div class="d"><code>[SC]</code> — cannot encrypt</div></div>
+  <div class="arrow">→</div>
+  <div class="box policy"><div class="t">encryption subkey</div><div class="d"><code>[E]</code> — the actual recipient</div></div>
+</div>
+
+<p>That resolution — friendly name to primary key to capability-matched subkey — is GPG doing
+its job silently, and it is the single most common source of "wait, which key is this?"
+confusion. You have now watched it happen.</p>
+
+<h2>Retrieval practice</h2>
+
+<p>Answer before scrolling back. Getting one wrong here is worth more than getting it right
+by peeking.</p>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">You run <code>pass insert github</code>. Which key does GPG encrypt that file to?</p>
+  <ul class="quiz-options">
+    <li data-correct>The subkey flagged <code>[E]</code>, for encryption</li>
+    <li>The primary flagged <code>[SC]</code>, for signature</li>
+    <li>The userid flagged <code>[full]</code>, for trusting</li>
+    <li>The keygrip flagged <code>[SSB]</code>, for storage</li>
+  </ul>
+  <div class="quiz-explain">The primary key has no encryption capability at all. GPG walks from
+  the name in <code>.gpg-id</code> to the primary key, then down to a subkey that can actually
+  do the job.</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q"><code>gpg --list-secret-keys</code> prints a line beginning <code>ssb</code>. What is that?</p>
+  <ul class="quiz-options">
+    <li data-correct>A secret subkey held on disk</li>
+    <li>A signed statement held on disk</li>
+    <li>A stored session held on disk</li>
+    <li>A secret backup held on disk</li>
+  </ul>
+  <div class="quiz-explain"><code>sec</code>/<code>ssb</code> are the private-half spellings of
+  <code>pub</code>/<code>sub</code>. Same two keys, listed from the side that can decrypt.</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q"><code>4C7B1E9A05D3F268</code> and <code>A3F92D…4C7B1E9A05D3F268</code>: what is the relationship?</p>
+  <ul class="quiz-options">
+    <li data-correct>The short one ends the long one</li>
+    <li>The short one hashes the long one</li>
+    <li>The short one signs the long one</li>
+    <li>The short one seeds the long one</li>
+  </ul>
+  <div class="quiz-explain">A long key ID is just the last 16 hex digits of the fingerprint —
+  an abbreviation, nothing more. The fingerprint is the real name; prefer it whenever you are
+  telling a machine which key you mean.</div>
+</div>
+
+<div class="recall" data-recall="Explain it as if to a colleague, from memory">
+  <p class="recall-q">You ran one <code>gpg</code> command and got two keypairs. Why does GPG do that,
+  and which one would you have to replace if your laptop were stolen?</p>
+  <div class="recall-answer">
+    <p>The two keys have different jobs and different lifetimes. The primary
+    (<code>[SC]</code>) is your durable identity: it certifies, and replacing it means becoming
+    a new person to everyone who knows your key. The subkey (<code>[E]</code>) is the working
+    part that data is actually encrypted to, and it is designed to be revocable and replaceable
+    without disturbing the identity.</p>
+    <p>After a laptop theft you would revoke and replace the <strong>encryption subkey</strong>,
+    keeping the primary — but only if the primary was not sitting on the stolen machine too.
+    On a standard single-machine setup it is. That gap is exactly what the offline-primary
+    ceremony exists to close, and why it is worth knowing about even while we skip it.</p>
+  </div>
+</div>
+
+<h2>Do it on your own machine</h2>
+
+<p>Nothing here changes any state. Run all four and read the output rather than skimming it.</p>
+
+<ol class="drill" data-drill="gpg-0001">
+  <li>Run <code>gpg --list-keys --with-subkey-fingerprints --keyid-format=long</code> and say out loud which line is the primary and which is the subkey.</li>
+  <li>Run the same command with <code>--list-secret-keys</code> instead. Confirm you get <code>sec</code>/<code>ssb</code> where you had <code>pub</code>/<code>sub</code>, and the same key IDs.</li>
+  <li>Pick any secret in your store and inspect its packets:
+    <code>gpg --list-packets --list-only "$(find ~/.password-store -name '*.gpg' | head -1)"</code>.
+    Find the <code>keyid</code> and match it against your listing by eye.</li>
+  <li>Repeat for a file in a different subdirectory of your store. Confirm it names the same subkey.</li>
+  <li>Run <code>gpg --list-keys --with-colons</code> and find <code>scESC</code> on the <code>pub</code> line and <code>e</code> on the <code>sub</code> line. That is the machine-readable form of the capability letters.</li>
+</ol>
+
+<div class="callout warn">
+  <p class="callout-title">Check this before you trust any backup guide</p>
+  <p>Run <code>ls ~/.gnupg</code>. If there is no <code>pubring.kbx</code>, your GnuPG is
+  running the newer <strong>keyboxd</strong> backend, which keeps public keys under
+  <code>public-keys.d/</code> instead. This is the default on GnuPG 2.4+ installs.
+  It matters because a great many GPG backup guides tell you to copy
+  <code>pubring.kbx</code>, and on such a system that advice silently backs up nothing.
+  We will do backup properly, with <code>--export</code> rather than file copying, in the
+  lesson on creating your real key.</p>
+</div>
+
+<h2>Where this is going</h2>
+
+<p>You can now name the key that protects your passwords and prove it from the ciphertext.
+Next we pull the same trick on <code>pass</code> itself: decrypt a password without using
+<code>pass</code> at all, showing that the store is a plain directory tree and the tool is a
+few hundred lines of shell over <code>gpg -d</code>. After that, we throw this practice key
+away and build the real one deliberately.</p>
+
+<div class="ask-teacher">
+  <p><strong>Ask your teacher.</strong> If any line of that key listing is still opaque —
+  what <code>cv25519</code> is, why the trust level says <code>ultimate</code>, what a keygrip
+  is, or what would happen if you deleted the subkey — ask me directly in the session. That
+  is what I am here for, and an unexamined confusion in lesson 1 becomes a blocked lesson 5.</p>
+</div>
+
+<footer class="colophon">
+  <h3>Read this next</h3>
+  <p><strong>Primary source:</strong>
+  <a href="https://wiki.archlinux.org/title/GnuPG">GnuPG — ArchWiki</a>. Read the
+  <em>Create a key pair</em> and <em>Subkeys</em> sections only, about ten minutes. It is
+  written for your exact distribution and it is the most practical GPG documentation that
+  exists. Skip anything about keyservers.</p>
+  <p><strong>Also cited:</strong>
+  <a href="https://www.gnupg.org/documentation/manuals/gnupg/">GnuPG manual</a> and the
+  capability legend in <code>/usr/share/doc/gnupg/DETAILS</code>, which is on your disk right now.</p>
+
+  <h3>Elsewhere in this workspace</h3>
+  <ul>
+    <li><a href="../reference/0001-glossary.html">Reference 01 · Glossary</a> — every term on this page, defined</li>
+    <li><a href="../MISSION.md">MISSION.md</a> — why we are doing this</li>
+    <li><a href="../RESOURCES.md">RESOURCES.md</a> — the trusted sources for this topic</li>
+  </ul>
+
+  <p class="crumb"><a href="../MISSION.md">GPG &amp; pass</a> → Lesson 01</p>
+</footer>
+
+</main>
+
+<script src="../../assets/syntax-highlight-code.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+<script src="../../assets/quiz-multiple-choice.js"></script>
+<script src="../../assets/recall-prompt.js"></script>
+<script src="../../assets/drill-checklist.js"></script>
+</body>
+</html>

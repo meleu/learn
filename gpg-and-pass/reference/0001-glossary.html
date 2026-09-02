@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · GPG &amp; pass glossary</title>
+<link rel="stylesheet" href="../../assets/base.css">
+</head>
+<body>
+<main class="sheet">
+
+<p class="crumb"><a href="../MISSION.md">GPG &amp; pass</a> → Reference 01</p>
+
+<header class="masthead">
+  <p class="eyebrow">Reference · Glossary</p>
+  <h1>GPG &amp; <code>pass</code> vocabulary</h1>
+  <p class="standfirst">The words these tools use, defined once. Every lesson in this
+  workspace uses them in exactly these senses.</p>
+</header>
+
+<p class="note">Entries marked <strong>†</strong> are terms whose everyday English meaning
+differs from their OpenPGP meaning. Those are the ones that cause trouble.</p>
+
+<h2>Keys</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Term</th><th>Definition</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Keypair</strong></td>
+      <td>A public key and its matching private key. The public one locks data; only the
+      private one unlocks it.</td></tr>
+    <tr><td><strong>Primary key</strong></td>
+      <td>The root keypair of your OpenPGP identity. Listed as <code>pub</code> (public half)
+      or <code>sec</code> (secret half). Normally capable of <em>certify</em> and
+      <em>sign</em>, and by default <strong>not</strong> encryption.</td></tr>
+    <tr><td><strong>Subkey</strong></td>
+      <td>A separate keypair bound to the primary by a certification signature. Listed as
+      <code>sub</code> / <code>ssb</code>. Does the day-to-day work; can be revoked and
+      replaced without changing your identity.</td></tr>
+    <tr><td><strong>Capability</strong></td>
+      <td>What a key is allowed to do, shown in brackets: <code>[C]</code> certify,
+      <code>[S]</code> sign, <code>[E]</code> encrypt, <code>[A]</code> authenticate. Source
+      of truth: <code>/usr/share/doc/gnupg/DETAILS</code>, field 12.</td></tr>
+    <tr><td><strong>Fingerprint</strong></td>
+      <td>40 hex digits uniquely naming one key. The unambiguous way to refer to a key.</td></tr>
+    <tr><td><strong>Key ID</strong></td>
+      <td>An abbreviation of the fingerprint: its last 16 hex digits (long form) or last 8
+      (short form). Convenient, and short IDs are collidable — prefer fingerprints when
+      precision matters.</td></tr>
+    <tr><td><strong>User ID (uid)</strong></td>
+      <td>A human label bound to a key, conventionally <code>Name &lt;email&gt;</code>. A key
+      may carry several. This is the name <code>pass</code> looks up.</td></tr>
+    <tr><td><strong>Keygrip</strong></td>
+      <td>GnuPG's internal 40-hex handle for a stored private key, used as the filename in
+      <code>private-keys-v1.d/</code>. Not an OpenPGP concept; you will rarely need it.</td></tr>
+    <tr><td><strong>Revocation certificate</strong></td>
+      <td>A pre-signed statement declaring a key dead. Generated at key creation and stored
+      in <code>openpgp-revocs.d/</code>. Your only recourse if the private key is lost.</td></tr>
+    <tr><td><strong>Trust †</strong></td>
+      <td>In GPG, trust means "how much do I believe this key belongs to that person" — a
+      web-of-trust concept, <em>not</em> a measure of security. Your own key shows
+      <code>[ultimate]</code> because you made it.</td></tr>
+    <tr><td><strong>Recipient</strong></td>
+      <td>A key that a given ciphertext was encrypted to. A file can have several, which is
+      how team stores work.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>GnuPG machinery</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Term</th><th>Definition</th></tr></thead>
+  <tbody>
+    <tr><td><strong>GnuPG / GPG</strong></td>
+      <td>The free implementation of the OpenPGP standard. <code>gpg</code> is the command;
+      version 2.x is current.</td></tr>
+    <tr><td><strong>OpenPGP</strong></td>
+      <td>The standard (RFC 4880 and successors) that GnuPG implements. Distinguishes the
+      format from any one program.</td></tr>
+    <tr><td><strong>Keyring</strong></td>
+      <td>Your local collection of keys. Historically files like <code>pubring.kbx</code>.</td></tr>
+    <tr><td><strong>keyboxd</strong></td>
+      <td>The newer public-key storage daemon in GnuPG 2.4+, keeping keys under
+      <code>public-keys.d/</code> instead of a single <code>pubring.kbx</code>. Default on
+      2.4+ installs — check with <code>ls ~/.gnupg</code>. Where it is in use, guides saying
+      "copy your <code>pubring.kbx</code>" do not apply.</td></tr>
+    <tr><td><strong>gpg-agent</strong></td>
+      <td>The background daemon holding private keys and caching passphrases. The reason you
+      type your passphrase once and not on every <code>pass show</code>.</td></tr>
+    <tr><td><strong>pinentry</strong></td>
+      <td>The helper program that actually prompts for your passphrase. Comes in curses, GTK
+      and Qt flavours; which one runs is a <code>gpg-agent</code> setting.</td></tr>
+    <tr><td><strong>Passphrase †</strong></td>
+      <td>The secret protecting your <em>private key on disk</em>. It is not an encryption key
+      for your passwords and it is never stored in the password store.</td></tr>
+    <tr><td><strong>Armor</strong></td>
+      <td>ASCII-safe base64 wrapping (<code>--armor</code>), producing
+      <code>-----BEGIN PGP…-----</code> text. Needed when a key must travel through something
+      that mangles binary.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2><code>pass</code></h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Term</th><th>Definition</th></tr></thead>
+  <tbody>
+    <tr><td><strong><code>pass</code></strong></td>
+      <td>"The standard Unix password manager": a shell script over <code>gpg</code>,
+      <code>git</code> and the filesystem. Each secret is one GPG-encrypted file.</td></tr>
+    <tr><td><strong>Password store</strong></td>
+      <td>The directory tree of encrypted files, by default <code>~/.password-store</code>.
+      Overridable with <code>PASSWORD_STORE_DIR</code>.</td></tr>
+    <tr><td><strong>pass-name</strong></td>
+      <td>A secret's path within the store, without the <code>.gpg</code> suffix — e.g.
+      <code>work/aws/prod</code>. Directory structure is yours to invent.</td></tr>
+    <tr><td><strong><code>.gpg-id</code></strong></td>
+      <td>A plain-text file listing the recipients (one per line, by uid or fingerprint) that
+      secrets in this directory are encrypted to. Written by <code>pass init</code>.</td></tr>
+    <tr><td><strong>Per-directory recipients</strong></td>
+      <td>A subdirectory may hold its own <code>.gpg-id</code>, overriding the parent's for
+      everything beneath it. The mechanism behind scoped team access.</td></tr>
+    <tr><td><strong>Re-encryption</strong></td>
+      <td>When the recipient list changes, <code>pass init</code> decrypts and re-encrypts
+      every affected file to the new set. Note this requires the private key.</td></tr>
+    <tr><td><strong>Multiline entry</strong></td>
+      <td>Convention, not enforcement: line 1 is the password, subsequent lines hold metadata
+      (<code>username:</code>, <code>url:</code>, …). <code>pass show -c</code> copies line 1
+      by default.</td></tr>
+    <tr><td><strong>Extension</strong></td>
+      <td>An add-on subcommand, e.g. <code>pass-otp</code>. Enabled per-store via
+      <code>PASSWORD_STORE_ENABLE_EXTENSIONS=true</code> and <code>.extensions/</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout">
+  <p class="callout-title">The distinction worth internalising</p>
+  <p>Your <strong>passphrase</strong> unlocks your <strong>private key</strong>. Your private
+  key decrypts your <strong>secrets</strong>. Three different things, and conflating the first
+  two is the most common way people talk themselves into a mistaken backup strategy.</p>
+</div>
+
+<footer class="colophon">
+  <h3>Sources</h3>
+  <ul>
+    <li><a href="https://git.zx2c4.com/password-store/about/"><code>pass(1)</code> — upstream reference</a></li>
+    <li><a href="https://wiki.archlinux.org/title/GnuPG">GnuPG — ArchWiki</a></li>
+    <li><a href="https://www.gnupg.org/gph/en/manual.html">The GNU Privacy Handbook</a></li>
+    <li><code>/usr/share/doc/gnupg/DETAILS</code> — capability letters, field 12</li>
+  </ul>
+  <h3>Lessons using this glossary</h3>
+  <ul>
+    <li><a href="../lessons/0001-the-key-pass-actually-uses.html">01 · The key <code>pass</code> actually uses</a></li>
+  </ul>
+  <p class="crumb"><a href="../MISSION.md">GPG &amp; pass</a> → Reference 01</p>
+</footer>
+
+</main>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>
