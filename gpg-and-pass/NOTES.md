@@ -30,6 +30,16 @@ machine-specific observations as a check the reader performs
 | key creation date | `2026-01-15` |
 | example store entries | `email/fastmail`, `work/aws/prod` |
 
+**Second example identity** — for multi-recipient / scoped-store examples (lessons 02, 07):
+
+| Thing | Value |
+|---|---|
+| uid | `Grace Hopper <grace@example.com>` |
+| primary key ID | `B648AB90AC8C55F6` |
+| primary fingerprint | `5E1C0A73F4B82D96A7530C81B648AB90AC8C55F6` |
+| subkey ID | `7524A409FDB1733C` |
+| subkey fingerprint | `9D30F8B21A6C45E7B0F29A4C7524A409FDB1733C` |
+
 Invariant to preserve when inventing more: a long key ID **is** the last 16 hex digits
 of its fingerprint. Lesson 01 teaches this and a quiz question tests it, so any
 fabricated pair must actually satisfy it.
@@ -64,7 +74,8 @@ assumption, not as a fact about the reader.
 ## Planned arc (revise freely)
 
 1. ✅ Anatomy of the key — `sec`/`ssb`, `[SC]`/`[E]`, fingerprint vs key ID.
-2. `pass` is a directory of `gpg -d` files — `.gpg-id`, proven with raw gpg.
+2. ✅ `pass` is a directory of `gpg -d` files — `.gpg-id` nearest-ancestor rule, recovery without
+   `pass`, and `--no-encrypt-to` as the one guarantee the wrapper adds.
 3. Creating the real key properly: expiry, revocation cert, backup via `--export`.
 4. Daily driver: `generate`, `-c`, multiline entries, reads inside scripts.
 5. git sync + moving a key to a second machine.
@@ -73,5 +84,9 @@ assumption, not as a fact about the reader.
 
 ## Open questions to revisit
 
-- Does `pass -c` work out of the box on Wayland here? Test during lesson 4.
+- ~~Does `pass -c` work out of the box on Wayland here?~~ **Resolved.** `pass` 1.7.4's `clip()`
+  branches on `$WAYLAND_DISPLAY` first and uses `wl-copy` / `wl-paste -n` natively; `xclip` is only
+  the X11 fallback. So `pass -c` works here with no wrapper. Its clipboard-restore trick (save the
+  previous clipboard, `exec -a` a renamed `sleep`, restore after `$PASSWORD_STORE_CLIP_TIME`) is
+  worth teaching in lesson 4 — it is the most surprising thing in the script.
 - Team size and whether everyone is on Unix — shapes lesson 7 heavily. Ask before writing it.

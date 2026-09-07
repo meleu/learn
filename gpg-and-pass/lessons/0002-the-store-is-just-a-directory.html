@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 02 · The store is just a directory</title>
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" href="../../assets/flow-boxes.css">
+</head>
+<body>
+<main class="sheet">
+
+<p class="crumb"><a href="../MISSION.md">GPG &amp; pass</a> → Lesson 02</p>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 02 · Knowledge + Skill</p>
+  <h1>The store is just a directory</h1>
+  <p class="standfirst">In <a href="0001-the-key-pass-actually-uses.html">lesson 01</a> you named the key
+  that protects your passwords. Now we open the other black box: <code>pass</code> itself. By the end
+  you will have read a secret out of your store without <code>pass</code> involved at all.</p>
+</header>
+
+<p>The fear that keeps people off <code>pass</code> is rarely stated out loud, but it is always the
+same one: <em>if this tool breaks, or stops being maintained, or I end up on a machine without it,
+are my credentials gone?</em> That is a completely reasonable thing to want an answer to before you
+trust it with anything real.</p>
+
+<p>The answer is short. <code>pass</code> is a single Bash script — 720 lines on this machine, and you
+can read the whole thing over a coffee. It stores each secret as one ordinary GPG-encrypted file in an
+ordinary directory tree. Everything else it does is convenience.</p>
+
+<div class="key-idea">
+  <p><strong><code>pass show x/y</code> is <code>gpg -d ~/.password-store/x/y.gpg</code>.</strong>
+  Not "similar to". The same operation, reached by a shorter name. Once you have seen that with your
+  own eyes, <code>pass</code> stops being a thing you trust and becomes a thing you understand.</p>
+</div>
+
+<h2>Step one: look at it on disk</h2>
+
+<p>No <code>pass</code> subcommand here. Just look:</p>
+
+<p class="code-label">terminal</p>
+<pre><code class="lang-shell">$ find ~/.password-store -not -path '*/.git/*'
+/home/you/.password-store
+/home/you/.password-store/.gpg-id
+/home/you/.password-store/email
+/home/you/.password-store/email/fastmail.gpg
+/home/you/.password-store/work
+/home/you/.password-store/work/aws
+/home/you/.password-store/work/aws/prod.gpg</code></pre>
+
+<p>Compare that to <code>pass ls</code>, which prints the same tree with <code>.gpg</code> trimmed off
+and some colour added. That is genuinely all <code>pass ls</code> is: <code>tree</code> with a suffix
+filter.</p>
+
+<p>Two structural facts fall out of that listing, and both matter more than they first appear.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Observation</th><th>Consequence</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>One secret = one file</td>
+      <td>The store is <code>git</code>-friendly, <code>rsync</code>-friendly and
+      <code>find</code>-friendly by construction. A merge conflict can only ever involve one secret.</td>
+    </tr>
+    <tr>
+      <td><strong>Filenames are not encrypted</strong></td>
+      <td>Anyone who can read the directory learns that you have an account at
+      <code>work/aws/prod</code> — just not the password. Encrypted contents, plaintext metadata.
+      Name your entries with that in mind.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p class="note margin">This is a real design trade-off, not an oversight. It is what lets the store be
+browsable, greppable and mergeable. If leaking the <em>shape</em> of your credentials is unacceptable
+for a given secret, that secret needs a different home.</p>
+
+<p>Now ask the filesystem what one of those files actually is:</p>
+
+<p class="code-label">terminal</p>
+<pre><code class="lang-shell">$ file ~/.password-store/email/fastmail.gpg
+…/fastmail.gpg: PGP ECDH Public-Key Encrypted Session Key - keyid: D82A6F14 B90C7E35</code></pre>
+
+<p>A standard OpenPGP message. Not a <code>pass</code> format — there is no such thing as a
+<code>pass</code> format. And note the key ID it names: the <code>[E]</code> subkey from lesson 01.</p>
+
+<h2>Step two: prove the equivalence, both directions</h2>
+
+<p>First direction — read a secret without <code>pass</code>. Run both and diff them:</p>
+
+<p class="code-label">terminal</p>
+<pre><code class="lang-shell">$ diff &lt;(pass show email/fastmail) &lt;(gpg -q -d ~/.password-store/email/fastmail.gpg) &amp;&amp; echo IDENTICAL
+IDENTICAL</code></pre>
+
+<p>Byte for byte. You have just recovered a credential with a tool that predates
+<code>pass</code> by fifteen years.</p>
+
+<p>Second direction is the one that really settles it — write a secret <em>without</em>
+<code>pass</code>, then read it back <em>with</em> <code>pass</code>:</p>
+
+<p class="code-label">terminal</p>
+<pre><code class="lang-shell">$ mkdir -p ~/.password-store/work/aws
+$ echo 'made-by-raw-gpg' | gpg -e -r ada@example.com -o ~/.password-store/work/aws/prod.gpg
+
+$ pass show work/aws/prod
+made-by-raw-gpg</code></pre>
+
+<p><code>pass</code> never noticed. There is no index, no database, no manifest to keep in sync — a
+file that appears in the tree <em>is</em> an entry, immediately, because the tree is the only state
+there is.</p>
+
+<div class="callout good">
+  <p class="callout-title">The recovery recipe, in one loop</p>
+  <p>This is the answer to "what if <code>pass</code> disappears". It needs a shell and
+  <code>gpg</code>, and nothing else:</p>
+  <pre><code class="lang-shell">$ find ~/.password-store -name '*.gpg' | while read -r f; do
+    name="${f#$HOME/.password-store/}"
+    printf '%s: %s\n' "${name%.gpg}" "$(gpg -q -d "$f" | head -1)"
+  done
+email/fastmail: hunter2
+work/aws/prod: made-by-raw-gpg</code></pre>
+  <p>Worth keeping somewhere you will find it in a bad week. It is written up in
+  <a href="../reference/0002-pass-to-gpg-equivalents.html">Reference 02</a>.</p>
+</div>
+
+<h2>Step three: <code>.gpg-id</code> and the nearest-ancestor rule</h2>
+
+<p>One file in that tree is not encrypted: <code>.gpg-id</code>. It is a plain list of recipients,
+one per line, and it is how <code>pass</code> decides who a new secret gets locked to.</p>
+
+<p>The rule is the only piece of <code>pass</code> logic worth memorising, and it is exactly the rule
+you already know from <code>.gitignore</code> or <code>.editorconfig</code>: <strong>walk up from the
+secret's directory and use the first <code>.gpg-id</code> you hit.</strong> Here it is in the source,
+lightly trimmed:</p>
+
+<p class="code-label">/usr/bin/pass — set_gpg_recipients()</p>
+<pre><code class="lang-shell">local current="$PREFIX/$1"
+while [[ $current != "$PREFIX" &amp;&amp; ! -f $current/.gpg-id ]]; do
+        current="${current%/*}"
+done
+current="$current/.gpg-id"</code></pre>
+
+<p>So a store with two <code>.gpg-id</code> files resolves like this:</p>
+
+<div class="flow">
+  <div class="box"><div class="t"><code>work/aws/prod</code></div><div class="d">no <code>.gpg-id</code> in <code>aws/</code></div></div>
+  <div class="arrow">→</div>
+  <div class="box policy"><div class="t"><code>work/.gpg-id</code></div><div class="d">found — stop here</div></div>
+  <div class="arrow">✕</div>
+  <div class="box"><div class="t">store root</div><div class="d">never consulted</div></div>
+</div>
+
+<p>That single rule is the whole basis of scoped access: give <code>work/</code> its own
+<code>.gpg-id</code> and everything beneath it is encrypted to a different set of people than the rest
+of the store. <code>pass init -p work grace@example.com</code> writes that file and re-encrypts
+everything below it, printing what it touched:</p>
+
+<p class="code-label">terminal</p>
+<pre><code class="lang-shell">$ pass init -p work grace@example.com
+Password store initialized for grace@example.com (work)
+work/aws/prod: reencrypting to 7524A409FDB1733C</code></pre>
+
+<p>Verify it the way you learned in lesson 01 — ask the ciphertext, not the tool:</p>
+
+<p class="code-label">terminal</p>
+<pre><code class="lang-shell">$ gpg --list-packets --list-only ~/.password-store/work/aws/prod.gpg | grep keyid
+:pubkey enc packet: version 3, algo 18, keyid 7524A409FDB1733C   # grace's [E] subkey
+
+$ gpg --list-packets --list-only ~/.password-store/email/fastmail.gpg | grep keyid
+:pubkey enc packet: version 3, algo 18, keyid D82A6F14B90C7E35   # still ada's</code></pre>
+
+<p>The team lesson is built entirely on this one mechanism. For now it is enough to know the rule and
+be able to predict, for any file in the tree, which <code>.gpg-id</code> governs it.</p>
+
+<div class="callout warn">
+  <p class="callout-title">The trap this creates</p>
+  <p><code>mv</code> and <code>pass mv</code> are <em>not</em> interchangeable, and this is the one
+  place where "it's just files" will bite you. Move a secret across a <code>.gpg-id</code> boundary
+  with plain <code>mv</code> and the file lands in its new directory <strong>still encrypted to the
+  old recipients</strong> — the tree says one thing, the ciphertext says another, and nothing warns
+  you. <code>pass mv</code> re-encrypts on arrival. Use it.</p>
+</div>
+
+<h2>Step four: what the wrapper actually adds</h2>
+
+<p>Everything so far has argued that <code>pass</code> is a thin shell over <code>gpg</code>. True —
+but thin is not nothing, and one of the flags it passes is load-bearing. Line 9 of the script:</p>
+
+<p class="code-label">/usr/bin/pass — line 9</p>
+<pre><code class="lang-shell">GPG_OPTS=( $PASSWORD_STORE_GPG_OPTS "--quiet" "--yes" "--compress-algo=none" "--no-encrypt-to" )</code></pre>
+
+<p><code>--no-encrypt-to</code> tells GPG to ignore any <code>encrypt-to</code> line in your
+<code>gpg.conf</code>. That option, if you have ever set it, silently adds a recipient to
+<em>everything</em> you encrypt. Watch the difference on a store whose <code>.gpg-id</code> names only
+Ada, with <code>encrypt-to grace@example.com</code> sitting in <code>gpg.conf</code>:</p>
+
+<p class="code-label">terminal</p>
+<pre><code class="lang-shell">$ echo secret | gpg -e -r ada@example.com -o /tmp/raw.gpg
+$ gpg --list-packets --list-only /tmp/raw.gpg | grep keyid
+:pubkey enc packet: version 3, algo 18, keyid D82A6F14B90C7E35   # ada  — asked for
+:pubkey enc packet: version 3, algo 18, keyid 7524A409FDB1733C   # grace — did NOT ask for
+
+$ printf 'secret\n' | pass insert -m -f email/test
+$ gpg --list-packets --list-only ~/.password-store/email/test.gpg | grep keyid
+:pubkey enc packet: version 3, algo 18, keyid D82A6F14B90C7E35   # ada, and only ada</code></pre>
+
+<p>Raw <code>gpg</code> quietly encrypted to a second person. <code>pass</code> did not. So the honest
+version of this lesson's thesis is: <strong>the store is just files and you can always read it by
+hand — but when you <em>write</em> to it by hand, you are opting out of a guarantee.</strong>
+<code>.gpg-id</code> is the recipient list only because <code>pass</code> refuses to let anything else
+join it.</p>
+
+<p class="note margin">This is also why the recovery loop above is a <em>read</em> recipe. Reading by
+hand is free. Writing by hand is a decision.</p>
+
+<h2>Retrieval practice</h2>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">A secret sits at <code>work/aws/prod</code>. There is a <code>.gpg-id</code> in the store root and another in <code>work/</code>. Which applies?</p>
+  <ul class="quiz-options">
+    <li data-correct>Only the nearer file, in work</li>
+    <li>Only the higher file, at root</li>
+    <li>Both of the files, once merged</li>
+    <li>None of the files, until reinit</li>
+  </ul>
+  <div class="quiz-explain"><code>pass</code> walks up from the secret's own directory and stops at the
+  first <code>.gpg-id</code> it finds. Nearest ancestor wins, and the ones above it are never read.</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">You copy a <code>.gpg</code> file into your store by hand, using <code>cp</code>. What does <code>pass ls</code> show?</p>
+  <ul class="quiz-options">
+    <li data-correct>The new entry, listed immediately</li>
+    <li>The new entry, after reindexing</li>
+    <li>An error, about unknown entries</li>
+    <li>Nothing, until you reinsert it</li>
+  </ul>
+  <div class="quiz-explain">There is no index to update. The directory tree is the only state
+  <code>pass</code> has, so <code>pass ls</code> is reading the filesystem live.</div>
+</div>
+
+<div class="quiz" data-quiz>
+  <p class="quiz-q">Someone reads your password store directory but has none of the private keys. What do they learn?</p>
+  <ul class="quiz-options">
+    <li data-correct>Which accounts you hold, not the passwords</li>
+    <li>Which accounts you hold, and the passwords</li>
+    <li>Neither the accounts held, nor the passwords</li>
+    <li>Not the accounts held, but the passwords</li>
+  </ul>
+  <div class="quiz-explain">Contents are encrypted; filenames are not. The pass-name
+  <code>work/aws/prod</code> is readable by anyone who can list the directory — which is worth
+  remembering before you push the store to a shared git remote.</div>
+</div>
+
+<div class="recall" data-recall="Answer from memory, then check">
+  <p class="recall-q">A colleague says: "I don't want to depend on <code>pass</code> — what happens to
+  my passwords if the project dies?" Answer them in a few sentences, and name the one thing your
+  answer does <em>not</em> cover.</p>
+  <div class="recall-answer">
+    <p>Every secret is a standalone OpenPGP file in a plain directory tree, so any secret can be read
+    with <code>gpg -d</code> alone, and the whole store with a three-line <code>find … | while read</code>
+    loop. <code>pass</code> is a Bash script you can read in an afternoon; nothing about the on-disk
+    format depends on it existing. The dependency is on GPG and on your private key, not on
+    <code>pass</code>.</p>
+    <p>What it does not cover: <strong>writing</strong>. Hand-rolled <code>gpg -e</code> honours
+    <code>encrypt-to</code> in <code>gpg.conf</code> and does not consult <code>.gpg-id</code> at all,
+    so a hand-written entry can end up with recipients you did not intend and did not see. Losing
+    <code>pass</code> costs you nothing on the read path and real guarantees on the write path.</p>
+  </div>
+</div>
+
+<h2>Do it on your own machine</h2>
+
+<p>Steps 1–4 are read-only and safe against your real store. Step 5 builds a throwaway store in
+<code>/tmp</code> — <code>PASSWORD_STORE_DIR</code> is how you experiment without risking anything.</p>
+
+<ol class="drill" data-drill="gpg-0002">
+  <li>Run <code>find ~/.password-store -not -path '*/.git/*'</code> and then <code>pass ls</code>. Satisfy yourself that they are the same tree.</li>
+  <li>Pick any entry and run the diff:
+    <code>diff &lt;(pass show NAME) &lt;(gpg -q -d ~/.password-store/NAME.gpg)</code>. Expect silence.</li>
+  <li>Run the recovery loop from the green box above against your real store. This is the command you want muscle memory for.</li>
+  <li>Run <code>cat ~/.password-store/.gpg-id</code>, then <code>find ~/.password-store -name .gpg-id</code>. If there is more than one, name which entries each governs before checking.</li>
+  <li>Build a scratch store and reproduce step two's second direction — write with raw <code>gpg</code>, read with <code>pass</code>:
+    <pre><code class="lang-shell">$ export PASSWORD_STORE_DIR=/tmp/scratch-store
+$ pass init YOUR_EMAIL
+$ mkdir -p "$PASSWORD_STORE_DIR/demo"
+$ echo hello | gpg -e -r YOUR_EMAIL -o "$PASSWORD_STORE_DIR/demo/hand-made.gpg"
+$ pass ls
+$ pass show demo/hand-made</code></pre>
+    Then <code>unset PASSWORD_STORE_DIR</code> and <code>rm -rf /tmp/scratch-store</code>.</li>
+  <li>In that same scratch store, run <code>sed -n '80,90p' /usr/bin/pass</code> and read the
+    <code>while</code> loop that implements the nearest-ancestor rule. Five lines. That is the feature.</li>
+</ol>
+
+<h2>Where this is going</h2>
+
+<p>You can now name your key, prove which key any file is encrypted to, and recover the entire store
+without the tool that made it. That is the whole "is this safe to trust" question answered — and it is
+the point at which the practice key has done its job.</p>
+
+<p>Next we throw it away and build the real one deliberately: expiry, a revocation certificate, and a
+backup taken with <code>--export</code> rather than by copying files that may not exist on your
+system.</p>
+
+<div class="ask-teacher">
+  <p><strong>Ask your teacher.</strong> Good things to ask about this one: what
+  <code>--compress-algo=none</code> is guarding against, why <code>pass show</code> round-trips through
+  <code>base64</code> in the source, what happens if a <code>.gpg-id</code> lists a key you do not have
+  the private half of, or whether <code>pass git</code> is doing anything cleverer than plain
+  <code>git</code>. Ask me in the session.</p>
+</div>
+
+<footer class="colophon">
+  <h3>Read this next</h3>
+  <p><strong>Primary source:</strong>
+  <a href="https://www.passwordstore.org/">passwordstore.org</a> — read the short design-philosophy
+  paragraph at the top, then, more importantly, open
+  <a href="https://git.zx2c4.com/password-store/tree/src/password-store.sh"><code>password-store.sh</code></a>
+  itself and read <code>cmd_show</code> and <code>set_gpg_recipients</code>. It is the same file as
+  <code>/usr/bin/pass</code> on your disk. Reading the implementation of a tool you were nervous about
+  is the fastest cure there is.</p>
+  <p><strong>Also cited:</strong> <code>/usr/bin/pass</code> (v1.7.4), lines 9 and 80–90, and
+  <code>man pass</code> on <code>.gpg-id</code> and <code>PASSWORD_STORE_DIR</code>.</p>
+
+  <h3>Elsewhere in this workspace</h3>
+  <ul>
+    <li><a href="0001-the-key-pass-actually-uses.html">Lesson 01 · The key <code>pass</code> actually uses</a> — where the <code>[E]</code> subkey came from</li>
+    <li><a href="../reference/0002-pass-to-gpg-equivalents.html">Reference 02 · <code>pass</code> ↔ <code>gpg</code> equivalents</a> — the recovery card</li>
+    <li><a href="../reference/0001-glossary.html">Reference 01 · Glossary</a> — <code>.gpg-id</code>, pass-name, recipient, re-encryption</li>
+    <li><a href="../MISSION.md">MISSION.md</a> — why we are doing this</li>
+  </ul>
+
+  <p class="crumb"><a href="../MISSION.md">GPG &amp; pass</a> → Lesson 02</p>
+</footer>
+
+</main>
+
+<script src="../../assets/syntax-highlight-code.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+<script src="../../assets/quiz-multiple-choice.js"></script>
+<script src="../../assets/recall-prompt.js"></script>
+<script src="../../assets/drill-checklist.js"></script>
+</body>
+</html>

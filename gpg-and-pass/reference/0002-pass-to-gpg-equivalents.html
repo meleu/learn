@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · pass ↔ gpg equivalents</title>
+<link rel="stylesheet" href="../../assets/base.css">
+</head>
+<body>
+<main class="sheet">
+
+<p class="crumb"><a href="../MISSION.md">GPG &amp; pass</a> → Reference 02</p>
+
+<header class="masthead">
+  <p class="eyebrow">Reference · Equivalents &amp; recovery</p>
+  <h1><code>pass</code> ↔ <code>gpg</code></h1>
+  <p class="standfirst">What each <code>pass</code> subcommand does underneath, and how to get your
+  secrets back with no <code>pass</code> on the machine. Print this one.</p>
+</header>
+
+<div class="callout good">
+  <p class="callout-title">Recover the whole store without <code>pass</code></p>
+  <pre><code class="lang-shell">find ~/.password-store -name '*.gpg' | while read -r f; do
+    name="${f#$HOME/.password-store/}"
+    printf '%s: %s\n' "${name%.gpg}" "$(gpg -q -d "$f" | head -1)"
+done</code></pre>
+  <p>Needs a shell, <code>gpg</code>, and your private key. Nothing else. Drop
+  <code>| head -1</code> to print full multiline entries. Redirect to a file only if you have
+  somewhere safe to put plaintext — and prefer piping straight into whatever consumes it.</p>
+</div>
+
+<h2>Command equivalents</h2>
+
+<p>Paths below assume the default store; <code>$PASSWORD_STORE_DIR</code> overrides it.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th><code>pass</code></th><th>Underneath</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>pass ls</code></td>
+      <td><code>tree ~/.password-store</code></td>
+      <td>Strips the <code>.gpg</code> suffix, prunes <code>.git</code>.</td>
+    </tr>
+    <tr>
+      <td><code>pass show x/y</code></td>
+      <td><code>gpg -d ~/.password-store/x/y.gpg</code></td>
+      <td>Exactly equivalent. Verify with <code>diff &lt;(…) &lt;(…)</code>.</td>
+    </tr>
+    <tr>
+      <td><code>pass show -c x/y</code></td>
+      <td><code>gpg -d … | head -1 | wl-copy</code></td>
+      <td>Plus a background job restoring the previous clipboard after
+      <code>$PASSWORD_STORE_CLIP_TIME</code> (45s default).</td>
+    </tr>
+    <tr>
+      <td><code>pass insert x/y</code></td>
+      <td><code>gpg -e -r $(cat .gpg-id) -o x/y.gpg</code></td>
+      <td><strong>Not</strong> equivalent — see the write-path warning below.</td>
+    </tr>
+    <tr>
+      <td><code>pass generate x/y N</code></td>
+      <td><code>tr -dc "$charset" &lt; /dev/urandom</code> → insert</td>
+      <td>Character set set by <code>-n</code> / <code>$PASSWORD_STORE_CHARACTER_SET</code>.</td>
+    </tr>
+    <tr>
+      <td><code>pass grep RE</code></td>
+      <td><code>gpg -d</code> each file → <code>grep</code></td>
+      <td>Decrypts everything in turn. Slow on a big store, and it never touches disk.</td>
+    </tr>
+    <tr>
+      <td><code>pass mv a b</code></td>
+      <td><code>mv</code> <strong>+ re-encrypt if needed</strong></td>
+      <td>Plain <code>mv</code> across a <code>.gpg-id</code> boundary leaves the old recipients in
+      place. Always use <code>pass mv</code>.</td>
+    </tr>
+    <tr>
+      <td><code>pass rm x/y</code></td>
+      <td><code>rm ~/.password-store/x/y.gpg</code></td>
+      <td>Plus a git commit if the store is a repo. Note the history keeps the ciphertext.</td>
+    </tr>
+    <tr>
+      <td><code>pass init -p d ID…</code></td>
+      <td>write <code>d/.gpg-id</code> + re-encrypt below it</td>
+      <td>Re-encryption needs your <em>private</em> key: you must be able to read what you rewrite.</td>
+    </tr>
+    <tr>
+      <td><code>pass git …</code></td>
+      <td><code>git -C ~/.password-store …</code></td>
+      <td>Plus a <code>diff.gpg.textconv</code> config so <code>git diff</code> shows plaintext.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Which key is this file encrypted to?</h2>
+
+<p class="code-label">terminal</p>
+<pre><code class="lang-shell"># no passphrase needed — parses packets without decrypting
+gpg --list-packets --list-only FILE.gpg | grep keyid
+
+# audit the entire store at once
+find ~/.password-store -name '*.gpg' -exec sh -c \
+  'printf "%s " "$1"; gpg --list-packets --list-only "$1" | sed -n "s/.*keyid \(.*\)/\1/p" | tr "\n" " "; echo' _ {} \;</code></pre>
+
+<p>The IDs you see are <strong><code>[E]</code> subkey</strong> IDs, not primary key IDs. Match them
+against <code>gpg --list-keys --with-subkey-fingerprints --keyid-format=long</code>. An ID you cannot
+account for means someone else can read that file.</p>
+
+<h2>The <code>.gpg-id</code> resolution rule</h2>
+
+<p>For a secret at <code>a/b/c</code>, <code>pass</code> checks in order and <strong>stops at the
+first hit</strong>:</p>
+
+<ol>
+  <li><code>a/b/.gpg-id</code></li>
+  <li><code>a/.gpg-id</code></li>
+  <li><code>.gpg-id</code> (store root)</li>
+</ol>
+
+<p>Nearest ancestor wins; the ones above it are never read and never merged. Recipients are one per
+line, by uid or fingerprint; <code>#</code> starts a comment. Source:
+<code>set_gpg_recipients()</code> in <code>/usr/bin/pass</code>.</p>
+
+<div class="callout warn">
+  <p class="callout-title">Reading by hand is free. Writing by hand is not.</p>
+  <p><code>pass</code> encrypts with
+  <code>--no-encrypt-to</code>, which makes GPG ignore any <code>encrypt-to</code> line in your
+  <code>gpg.conf</code>. Hand-rolled <code>gpg -e</code> does <em>not</em>: it will silently add that
+  recipient, and it never consults <code>.gpg-id</code> at all. If you must write by hand, mirror the
+  full option set from line 9 of the script:</p>
+  <pre><code class="lang-shell">gpg -e --quiet --yes --compress-algo=none --no-encrypt-to \
+    $(sed 's/#.*//;/^$/d;s/^/-r /' ~/.password-store/x/.gpg-id) \
+    -o ~/.password-store/x/y.gpg</code></pre>
+  <p>Then verify the recipients came out right with the <code>--list-packets</code> command above.</p>
+</div>
+
+<h2>Environment variables worth knowing</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Variable</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>PASSWORD_STORE_DIR</code></td><td>Store location. The safe way to experiment: point it at <code>/tmp</code> and nothing real is at risk.</td></tr>
+    <tr><td><code>PASSWORD_STORE_CLIP_TIME</code></td><td>Seconds before <code>-c</code> restores the clipboard. Default 45.</td></tr>
+    <tr><td><code>PASSWORD_STORE_GENERATED_LENGTH</code></td><td>Default length for <code>pass generate</code>. Default 25.</td></tr>
+    <tr><td><code>PASSWORD_STORE_CHARACTER_SET</code></td><td>Character class for generated passwords.</td></tr>
+    <tr><td><code>PASSWORD_STORE_GPG_OPTS</code></td><td>Extra flags prepended to every <code>gpg</code> call.</td></tr>
+    <tr><td><code>PASSWORD_STORE_ENABLE_EXTENSIONS</code></td><td>Set <code>true</code> to allow <code>.extensions/</code> subcommands.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout">
+  <p class="callout-title">Things the store does not hide</p>
+  <p>Filenames, directory structure, file sizes and modification times are all plaintext. Anyone with
+  read access to the directory — or to a git remote you pushed it to — learns which accounts you hold
+  and roughly when you last changed each one. Only the contents are encrypted.</p>
+</div>
+
+<footer class="colophon">
+  <h3>Sources</h3>
+  <ul>
+    <li><code>/usr/bin/pass</code> v1.7.4 — <code>GPG_OPTS</code> (line 9), <code>set_gpg_recipients()</code>, <code>clip()</code>, <code>cmd_show()</code></li>
+    <li><a href="https://git.zx2c4.com/password-store/about/"><code>pass(1)</code> — upstream reference</a>, also <code>man pass</code></li>
+    <li><a href="https://www.passwordstore.org/">passwordstore.org</a></li>
+  </ul>
+  <h3>Lessons using this reference</h3>
+  <ul>
+    <li><a href="../lessons/0002-the-store-is-just-a-directory.html">02 · The store is just a directory</a></li>
+  </ul>
+  <p class="crumb"><a href="../MISSION.md">GPG &amp; pass</a> → Reference 02</p>
+</footer>
+
+</main>
+<script src="../../assets/syntax-highlight-code.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>

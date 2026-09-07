@@ -13,6 +13,14 @@
   Use for: exact syntax, clipboard timing, per-subfolder keys, extension hooks.
   Locally: `man pass`.
 
+- [`password-store.sh` — the source](https://git.zx2c4.com/password-store/tree/src/password-store.sh)
+  720 lines of readable Bash, and the same file as `/usr/bin/pass` on disk. Promoted to a
+  first-class source: for any question of the form "what does `pass` actually do when I…", this
+  answers it faster and more reliably than the man page, and it settles disputes the docs leave open.
+  Landmarks: `GPG_OPTS` (line 9), `set_gpg_recipients()` (the `.gpg-id` walk-up),
+  `reencrypt_path()`, `clip()` (the clipboard-restore trick), `cmd_show()`.
+  Use for: verifying claims before teaching them.
+
 - [GnuPG — ArchWiki](https://wiki.archlinux.org/title/GnuPG)
   The most practical GPG page on the internet, and it targets Arch directly.
   Use for: `gpg-agent` config, pinentry selection, key generation flags, subkeys,
