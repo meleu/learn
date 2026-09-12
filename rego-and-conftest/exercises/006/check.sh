@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check.sh — Runs conftest over manifests/ with policy/ and compares every
+# check.sh — Runs conftest over k8s/ with policy/ and compares every
 # tagged message against the lesson 6 answer table.
 #
 # Usage: ./check.sh [K8S-NN ...]    (no arguments checks every requirement)
@@ -15,17 +15,17 @@ readonly -a ALL_IDS=(K8S-01 K8S-02 K8S-03 K8S-04 K8S-05 K8S-06 K8S-07)
 
 # "ID LEVEL FILE" -> number of messages expected. Anything absent expects 0.
 declare -rA EXPECTED=(
-  ["K8S-01 WARN manifests/frontend-svc.yaml"]=1
-  ["K8S-02 FAIL manifests/api.yaml"]=1
-  ["K8S-02 FAIL manifests/debug-pod.yaml"]=1
-  ["K8S-03 FAIL manifests/api.yaml"]=1
-  ["K8S-03 FAIL manifests/database.yaml"]=1
-  ["K8S-04 FAIL manifests/debug-pod.yaml"]=1
-  ["K8S-04 FAIL manifests/web.yaml"]=2
-  ["K8S-05 FAIL manifests/debug-pod.yaml"]=1
-  ["K8S-05 FAIL manifests/web.yaml"]=2
-  ["K8S-06 FAIL manifests/debug-pod.yaml"]=1
-  ["K8S-07 WARN manifests/api.yaml"]=1
+  ["K8S-01 WARN k8s/frontend-svc.yaml"]=1
+  ["K8S-02 FAIL k8s/api.yaml"]=1
+  ["K8S-02 FAIL k8s/debug-pod.yaml"]=1
+  ["K8S-03 FAIL k8s/api.yaml"]=1
+  ["K8S-03 FAIL k8s/database.yaml"]=1
+  ["K8S-04 FAIL k8s/debug-pod.yaml"]=1
+  ["K8S-04 FAIL k8s/web.yaml"]=2
+  ["K8S-05 FAIL k8s/debug-pod.yaml"]=1
+  ["K8S-05 FAIL k8s/web.yaml"]=2
+  ["K8S-06 FAIL k8s/debug-pod.yaml"]=1
+  ["K8S-07 WARN k8s/api.yaml"]=1
 )
 
 readonly GREEN=$'\e[32m' RED=$'\e[31m' DIM=$'\e[2m' RESET=$'\e[0m'
@@ -63,7 +63,7 @@ check::requirement() {
   while IFS= read -r key; do
     [[ -n "${seen[$key]:-}" ]] && continue
     seen[$key]=1
-    read -r _ level file <<<"$key"
+    read -r _ level file <<< "$key"
     want="${EXPECTED[$key]:-0}"
     got="${actual_ref[$key]:-0}"
     if ((want == got)); then
@@ -81,14 +81,14 @@ check::requirement() {
 
 main() {
   cd -- "$SCRIPT_DIR"
-  command -v conftest >/dev/null || check::die "conftest is not on PATH"
+  command -v conftest > /dev/null || check::die "conftest is not on PATH"
   [[ -d policy ]] || check::die "no policy/ directory next to check.sh yet"
 
   local -a ids=("$@")
   ((${#ids[@]} > 0)) || ids=("${ALL_IDS[@]}")
 
   local output
-  output="$(conftest test --no-color -p policy manifests/ 2>&1 || true)"
+  output="$(conftest test --no-color -p policy k8s/ 2>&1 || true)"
 
   if [[ "$output" == *"Error:"* ]]; then
     printf '%s\n' "$output" >&2
@@ -112,7 +112,7 @@ main() {
     else
       untagged+=("$line")
     fi
-  done <<<"$output"
+  done <<< "$output"
 
   local status=0 id
   for id in "${ids[@]}"; do

@@ -27,7 +27,7 @@ Curated 2026-08-23; links re-checked 2026-09-12. Primary project docs or maintai
 ### Tooling
 
 - [Regal](https://github.com/open-policy-agent/regal) ([docs](https://www.openpolicyagent.org/projects/regal)): the Rego linter, now in the open-policy-agent org. Catches idiomatic/correctness problems `opa check` misses; editor/LSP integration. Does **not** catch a dead rule (mutually exclusive equalities), even with `--enable-all` (verified s4), so it complements tests. Bundles its own OPA, which can lag the `opa` CLI.
-- [Rego Style Guide](https://github.com/open-policy-agent/rego-style-guide/blob/main/style-guide.md): the conventions Regal enforces, now in the open-policy-agent org. Content is `style-guide.md`; the repo README is a stub, so link there. Use for: "is this idiomatic?" without a community round-trip.
+- [Rego Style Guide](https://www.openpolicyagent.org/docs/style-guide): the conventions Regal enforces. Use for: "is this idiomatic?" without a community round-trip.
 
 ### Version-critical
 
