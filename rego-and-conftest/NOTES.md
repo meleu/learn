@@ -30,6 +30,12 @@ unless marked otherwise; `(sN)` = session N.
   chronology as support for a style claim. → **Nothing may judge or quote a thing before the thing
   is on the page**, and background that does not change what the learner writes gets cut, however
   true. Verdicts come after the walkthrough, not inside the code comments.
+- **Anki deck is part of the workspace** (s8): user drives the reviews, we author the cards.
+  Basic note type, one short sentence each side, 5-7 per lesson, most-fundamental only. →
+  **Every new lesson ships a `flashcards/NNNN-<same-slug>.md` alongside it**, not as a later
+  pass. Card-writing is a check on the lesson: a takeaway that will not survive as one sentence
+  is usually a takeaway that is doing two jobs. Never card a fact a later lesson corrects
+  (lesson 4's `tests` arithmetic was skipped in favour of lesson 5's).
 - Conventions: practice files in `exercises/NNN/` **inside the workspace**, plain zero-padded, no
   suffix, never overwrite an existing dir. Brings own example code (lesson 2's `package signup`
   snippet was theirs verbatim) — use what they hand over, verify it runs first. Hand-formats
@@ -51,6 +57,21 @@ Rego v1 is default: `import rego.v1` is a no-op; v0 bodiless rules (`p { ... }`)
 `../assets/` is shared with sibling workspaces and moves independently — `ls ../assets/` at the
 start of each session. `code-copy-button.js` (arrived from outside) is wired into all 5 lesson
 and 3 reference pages, but not `index.html`. `rego-and-or-grid.css` added by lesson 4.
+
+## Flashcards
+
+`flashcards/NNNN-<lesson-slug>.md`, one file per lesson, filename mirroring `lessons/`. Each
+file: an H1, a line giving note type + card count + a relative link back to the lesson, then
+cards as `**N. Front:**` / `**Back:**` pairs. Markdown, hand-editable; the user imports into
+Anki themselves (offer a TSV conversion, do not commit one). Lessons 1-5 carded in s8, 35 cards.
+
+Interleaving is deliberate and will look like duplication in a shuffled deck: the undefined
+thread is carded four times over four lessons (L1 #4/#5, L2 #7, L3 #5, L5 #5) as four costumes
+of one mechanism. Keep that when adding lessons — the fifth silent pass belongs on a card of
+its own, not folded into an existing one.
+
+Known rough edge: L3 #2 (the four conventions) is the deck's only list card. If the user reports
+it fighting them, split it into four cloze cards rather than shortening the answer.
 
 ## Shipped lessons
 
