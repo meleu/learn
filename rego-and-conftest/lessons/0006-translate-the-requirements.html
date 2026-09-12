@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 6 · Translate the Requirements</title>
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" href="../../assets/hint-details.css">
+<style>
+  .drill .req-head { font-weight: 700; margin: 0 0 0.35rem; }
+  .drill .req-meta {
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    margin: 0.35rem 0 0;
+  }
+  .level {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+    vertical-align: 0.1em;
+    margin-right: 0.3rem;
+  }
+  .level.deny { background: var(--warn-soft); color: var(--warn); }
+  .level.warn { background: var(--accent-soft); color: var(--ink-soft); }
+  .drill .req-text { font-family: var(--serif); font-size: 1rem; line-height: 1.45; }
+</style>
+</head>
+<body>
+<main class="sheet">
+
+<p class="crumb"><a href="../index.html">↑ Course index</a></p>
+
+<header class="masthead">
+  <p class="eyebrow">Rego &amp; Conftest · Lesson 6 · Practice</p>
+  <h1>Translate the Requirements</h1>
+  <p class="standfirst">No new syntax on this page. A platform team has written seven rules in
+  plain English, and six Kubernetes manifests are sitting in a directory breaking some of them.
+  <strong>Your job is the one you will have at work: turn the English into Rego, and prove the
+  Rego catches what it should.</strong></p>
+</header>
+
+<div class="callout good">
+  <p class="callout-title">Your win for this lesson</p>
+  <p>One <code>policy/</code> directory that enforces all seven requirements, confirmed line by line
+  by an automatic checker — including the requirements that are easy to get <em>almost</em>
+  right.</p>
+</div>
+
+<h2>1 · What is already on disk</h2>
+
+<p>Everything lives in <code>exercises/006/</code>. You write only <code>policy/</code>.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>File</th><th>What it is</th></tr></thead>
+  <tbody>
+    <tr><td><code>manifests/web.yaml</code></td><td>A Deployment with three containers</td></tr>
+    <tr><td><code>manifests/api.yaml</code></td><td>A Deployment with one container</td></tr>
+    <tr><td><code>manifests/worker.yaml</code></td><td>A Deployment with one container</td></tr>
+    <tr><td><code>manifests/database.yaml</code></td><td>Two documents: a StatefulSet and a Service</td></tr>
+    <tr><td><code>manifests/frontend-svc.yaml</code></td><td>A Service</td></tr>
+    <tr><td><code>manifests/debug-pod.yaml</code></td><td>A bare Pod</td></tr>
+    <tr><td><code>check.sh</code></td><td>The checker (section 2)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The table deliberately says nothing about what is wrong with each file. Finding that out is
+what your policies are for.</p>
+
+<h2>2 · The one convention, and the feedback loop</h2>
+
+<p>Every message you produce must <strong>start with the requirement's ID in brackets</strong>.
+The rest of the wording is yours:</p>
+
+<figure>
+<pre><code>[K8S-00] Deployment/example: container app does something it should not</code></pre>
+<figcaption>Real policy libraries do this for a reason you will care about as the person teaching
+the team: when a pipeline fails, the ID is what a coworker searches for to find the written
+requirement behind the message.</figcaption>
+</figure>
+
+<p>The ID is also what <code>check.sh</code> keys on. It runs <code>conftest test</code> over
+<code>manifests/</code> and compares, per requirement, <em>which file</em> got <em>how many</em>
+messages at <em>which level</em> (<code>FAIL</code> or <code>WARN</code>) against an answer table.
+Pass IDs to check only those; pass nothing to check everything.</p>
+
+<figure>
+<pre><code class="lang-shell">$ ./check.sh K8S-01 K8S-02
+  ✗  K8S-01  WARN  manifests/database.yaml      expected 0, got 1
+  ✓  K8S-01  WARN  manifests/frontend-svc.yaml  1 message(s)
+  ·  K8S-02  no [K8S-02] messages at all: not written yet, or passing silently</code></pre>
+<figcaption>Verified output, against a deliberately sloppy <code>K8S-01</code> rule. Three symbols:
+<strong>✓</strong> right count, <strong>✗</strong> wrong count — a missing message or an extra one
+— and <strong>·</strong> nothing tagged with that ID anywhere. Read that last line twice:
+<em>not written</em> and <em>written but silent</em> look identical from outside, which is the
+course's running theme in one sentence.</figcaption>
+</figure>
+
+<p class="note"><code>check.sh</code> contains its answer table in plain text. It tells you
+<em>where</em> the violations are, never <em>how</em> to write a rule that finds them — reading it
+first is like reading a test suite before writing the code. Your call; the practice is the same
+either way.</p>
+
+<h2>3 · The loop for every requirement</h2>
+
+<p>The same four moves each time, all from earlier lessons. Do not skip the first two just because
+the requirement feels obvious — the ones that feel obvious are where the silent passes live.</p>
+
+<ol>
+  <li><strong>Look at the shape</strong> of the file the requirement is about:
+  <code>conftest parse manifests/&lt;file&gt;</code> (<a href="0003-the-conftest-contract.html">lesson
+  3</a>). Never guess a path.</li>
+  <li><strong>Ask the question as a query</strong> before writing a rule:
+  <code>opa eval -i manifests/&lt;file&gt; '…' --format pretty</code>
+  (<a href="0005-the-variable-is-the-loop.html">lesson 5</a> §3). The rule body <em>is</em> that
+  query.</li>
+  <li><strong>Write the rule</strong> in <code>policy/</code>, <code>package main</code>, message
+  starting with the tag.</li>
+  <li><strong>Run <code>./check.sh K8S-NN</code></strong>. Green for that ID means move on; anything
+  else means go back to move 1, not to the rule.</li>
+</ol>
+
+<h2>4 · The requirements</h2>
+
+<p>Roughly easiest first. Each hint points at the lesson that holds the idea, not at the answer —
+open one only after you are stuck.</p>
+
+<ol class="drill" data-drill="rego-0006">
+  <li>
+    <p><strong>Set up.</strong> From the workspace root, run the checker before writing anything,
+    and read its complaint.</p>
+<pre><code class="lang-shell">cd exercises/006
+ls manifests
+./check.sh
+mkdir policy</code></pre>
+  </li>
+
+  <li>
+    <p class="req-head">K8S-01 · Exposed Services</p>
+    <p class="req-text">A Service of type <code>NodePort</code> or <code>LoadBalancer</code> exposes
+    a workload outside the cluster. That is sometimes intended, so it should be flagged for review
+    but must not block the pipeline.</p>
+    <p class="req-meta"><span class="level warn">WARN</span> Applies to: Services · Message names:
+    the Service and its type</p>
+    <details class="hint"><summary>Hint</summary>
+      <p>"Flag but don't block" is a choice of rule name (<a
+      href="0003-the-conftest-contract.html">lesson 3</a> §5). "One of two values" is the shortest
+      OR spelling in <a href="0004-and-down-or-sideways.html">lesson 4</a> §6.</p>
+    </details>
+  </li>
+
+  <li>
+    <p class="req-head">K8S-02 · Namespaces</p>
+    <p class="req-text">Every resource must declare its namespace explicitly, and that namespace
+    must not be <code>default</code>.</p>
+    <p class="req-meta"><span class="level deny">FAIL</span> Applies to: every kind · Message
+    names: the kind and name of the resource</p>
+    <details class="hint"><summary>Hint</summary>
+      <p>That sentence contains two ways to break it, joined by "and" in English — but a manifest
+      breaks it if it does <em>either</em> thing, so in Rego it is an OR (<a
+      href="0004-and-down-or-sideways.html">lesson 4</a> §4). When you write the message for the
+      missing case, ask what every value you interpolate evaluates to (§3 of the same lesson).</p>
+    </details>
+  </li>
+
+  <li>
+    <p class="req-head">K8S-03 · Replicas</p>
+    <p class="req-text">Deployments and StatefulSets must run at least two replicas. Kubernetes
+    defaults an omitted <code>replicas</code> field to 1<a href="#src-1">¹</a>, so leaving it out is
+    a violation too.</p>
+    <p class="req-meta"><span class="level deny">FAIL</span> Applies to: Deployments and
+    StatefulSets · Message names: the kind and name</p>
+    <details class="hint"><summary>Hint</summary>
+      <p>What does <code>input.spec.replicas &lt; 2</code> evaluate to when the key is not there
+      (<a href="0003-the-conftest-contract.html">lesson 3</a> §6)? And once you handle the missing
+      case, make sure a Service — which has no replicas either — is not dragged in (<a
+      href="0004-and-down-or-sideways.html">lesson 4</a> §2).</p>
+    </details>
+  </li>
+
+  <li>
+    <p class="req-head">K8S-04 · Floating image tags</p>
+    <p class="req-text">No container may use an image tagged <code>:latest</code>. The tag moves,
+    so the same manifest can deploy different code on different days<a href="#src-2">²</a>.</p>
+    <p class="req-meta"><span class="level deny">FAIL</span> Applies to: every container in a
+    Deployment, StatefulSet or Pod · Message names: the resource, the container and its image</p>
+    <details class="hint"><summary>Hint</summary>
+      <p>You wrote this rule in <a href="0005-the-variable-is-the-loop.html">lesson 5</a>. What is
+      new is the Pod: run <code>conftest parse</code> on it and compare where its containers live.
+      Two paths to the same kind of thing is an OR, and lesson 4 §6's helper-rule spelling can
+      collect from both — a helper can be a set built with <code>contains</code>
+      (<a href="0002-many-rules-one-set.html">lesson 2</a>), not only a true/false.</p>
+    </details>
+  </li>
+
+  <li>
+    <p class="req-head">K8S-05 · Memory limits</p>
+    <p class="req-text">Every container must set a memory limit
+    (<code>resources.limits.memory</code>)<a href="#src-3">³</a>.</p>
+    <p class="req-meta"><span class="level deny">FAIL</span> Applies to: every container in a
+    Deployment, StatefulSet or Pod · Message names: the resource and the container</p>
+    <details class="hint"><summary>Hint</summary>
+      <p>Bind first, negate second (<a href="0005-the-variable-is-the-loop.html">lesson 5</a> §7).
+      If you built a container helper for K8S-04, this rule should be three lines of body.</p>
+    </details>
+  </li>
+
+  <li>
+    <p class="req-head">K8S-06 · Privileged containers</p>
+    <p class="req-text">No container may run privileged
+    (<code>securityContext.privileged: true</code>)<a href="#src-4">⁴</a>.</p>
+    <p class="req-meta"><span class="level deny">FAIL</span> Applies to: every container in a
+    Deployment, StatefulSet or Pod · Message names: the resource and the container</p>
+    <details class="hint"><summary>Hint</summary>
+      <p>One manifest sets <code>privileged</code> explicitly to <code>false</code>. Make sure your
+      rule is asking about the <em>value</em>, not about whether the key exists.</p>
+    </details>
+  </li>
+
+  <li>
+    <p class="req-head">K8S-07 · Readiness probes <em>(stretch)</em></p>
+    <p class="req-text">A workload in which <em>no</em> container defines a
+    <code>readinessProbe</code> will receive traffic before it is ready<a href="#src-5">⁵</a>. One
+    probed container is enough — this is a judgement about the workload, not about any single
+    container.</p>
+    <p class="req-meta"><span class="level warn">WARN</span> Applies to: Deployments and
+    StatefulSets · Message names: the kind and name</p>
+    <details class="hint"><summary>Hint</summary>
+      <p>"About the collection as a whole, no single member at fault" is how <a
+      href="0005-the-variable-is-the-loop.html">lesson 5</a> §8 describes the one job
+      <code>every</code> is for. There is also a spelling with <code>some</code> in a helper and a
+      <code>not</code> in the rule — try both and keep the one you would rather explain.</p>
+    </details>
+  </li>
+
+  <li>
+    <p><strong>All green.</strong> Run the whole table, then look at the raw report once so you
+    have seen what a coworker's pipeline would print.</p>
+<pre><code class="lang-shell">./check.sh
+conftest test manifests/; echo "exit=$?"</code></pre>
+  </li>
+</ol>
+
+<h2>5 · Debrief</h2>
+
+<div class="recall" data-recall="Only after check.sh is all green">
+  <p class="recall-q">Several of these requirements had a version that looks correct, compiles,
+  and reports a clean pass on a file that breaks the rule. For each one you can name, say which
+  file would have slipped through and which silent pass from the course it was. Then name one
+  manifest that would break a requirement and still get past <em>your</em> policy — something
+  <code>check.sh</code> never tests.</p>
+  <div class="recall-answer">
+    <p><strong>K8S-02, missing namespace</strong> — <code>api.yaml</code>. Interpolating
+    <code>input.metadata.namespace</code> into the message for the <em>missing</em> case hands
+    <code>sprintf</code> an undefined value, which kills the body (<a
+    href="0004-and-down-or-sideways.html">lesson 4</a>, silent pass 3).</p>
+    <p><strong>K8S-03, omitted replicas</strong> — <code>api.yaml</code>.
+    <code>input.spec.replicas &lt; 2</code> on a missing key is undefined, not true, so a rule
+    with only the comparison never fires on the manifest that is <em>most</em> wrong (<a
+    href="0003-the-conftest-contract.html">lesson 3</a>, silent pass 1). Adding the missing case
+    without a kind guard fails the other way — loudly, on both Services and the Pod — which is
+    what the <code>✗ expected 0</code> lines are for.</p>
+    <p><strong>K8S-04, 05, 06 on the Pod</strong> — <code>debug-pod.yaml</code>. A rule iterating
+    only <code>spec.template.spec.containers</code> iterates nothing on a Pod: zero bindings, clean
+    pass (<a href="0005-the-variable-is-the-loop.html">lesson 5</a>, silent pass 4). K8S-06 shows
+    it most starkly, because the Pod is its only violation — so a Deployment-only rule produced
+    the <code>·</code> line, indistinguishable from not having written it.</p>
+    <p><strong>K8S-06, existence instead of value</strong> — the mirror image, not a silent pass:
+    testing <code>c.securityContext</code> rather than <code>privileged == true</code> wrongly
+    denies <code>worker.yaml</code>.</p>
+    <p><strong>A gap no test here covers:</strong> an image with no tag at all, such as
+    <code>nginx</code>. Kubernetes treats it as <code>:latest</code><a href="#src-2">²</a>, and
+    <code>endswith(c.image, ":latest")</code> lets it straight through. Closing that needs a
+    built-in this course has not used yet — worth asking about.</p>
+  </div>
+</div>
+
+<div class="key-idea">
+  <p><strong>A requirement is not translated until you have watched it fail on the file that
+  breaks it and stay quiet on the file that does not.</strong> Every trap above was caught by one
+  half of that sentence — which is why <code>worker.yaml</code>, the manifest that breaks nothing,
+  is in the directory at all.</p>
+</div>
+
+<div class="ask-teacher">
+  <strong>I am your teacher for this, not just the author of the page.</strong> Stuck on one
+  requirement, or green but unsure your Rego is the version you would hand a coworker? Paste your
+  <code>policy/</code> into the session and ask for a review. Also good questions: how to catch the
+  untagged image, how to test these rules without fixtures on disk (that is <code>conftest
+  verify</code>, next on the list), or why conftest's own example below writes <code>msg =</code>
+  where you have been writing <code>msg :=</code>.
+</div>
+
+<footer class="colophon">
+
+  <h3>Read this next (primary source)</h3>
+  <p><a href="https://github.com/open-policy-agent/conftest/tree/master/examples/kubernetes/policy">Conftest's
+  own Kubernetes example policies</a>, <strong>after</strong> your checker is green. Compare their
+  translation of similar requirements to yours. Two things in them are new: a second package
+  pulled in with <code>import data.kubernetes</code> to share helpers across files, and
+  <code>=</code> in place of <code>:=</code>. Neither changes what you wrote today; both are good
+  questions to bring back.</p>
+
+  <h3>Main takeaways</h3>
+  <ul>
+    <li><strong>Parse, query, rule, check</strong> — in that order, every time. The shape comes
+    from <code>conftest parse</code>, never from memory.</li>
+    <li>English "must be present <em>and</em> must not be X" is Rego <strong>OR</strong>: two ways
+    to violate it, so two definitions.</li>
+    <li>When a field has a default, <strong>omitting it is a violation you must write
+    separately</strong>. A comparison against a missing key is undefined, not true.</li>
+    <li>The same kind of thing at two paths (a Pod's containers vs a Deployment's) is an OR, and a
+    <code>contains</code> helper can collect from both.</li>
+    <li>A fixture that breaks <strong>nothing</strong> is as important as the ones that break
+    everything: it is the only thing that catches a rule firing where it should not.</li>
+    <li>Tag each message with a requirement ID. It makes a failing pipeline traceable to a written
+    rule, and makes results countable per requirement.</li>
+  </ul>
+
+  <h3>Reference</h3>
+  <ul>
+    <li><a href="../reference/0003-conftest-cheatsheet.html">Conftest cheat sheet</a> — the
+    contract, <code>deny</code> vs <code>warn</code>, and <code>conftest parse</code>.</li>
+    <li><a href="../reference/0002-opa-cli-cheatsheet.html">OPA CLI cheat sheet</a> —
+    <code>opa eval -i</code> for move 2 of the loop.</li>
+    <li><a href="../reference/0001-glossary.html">Glossary</a> — <em>Logic: AND and OR</em> and
+    <em>Iteration</em> are the two sections this page leans on.</li>
+  </ul>
+
+  <h3>Sources</h3>
+  <ul>
+    <li id="src-1"><a href="https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#replicas">Kubernetes
+    — Deployments, <em>Replicas</em></a>: "<code>.spec.replicas</code> is an optional field that
+    specifies the number of desired Pods. It defaults to 1."</li>
+    <li id="src-2"><a href="https://kubernetes.io/docs/concepts/containers/images/">Kubernetes —
+    Images</a>: "If you don't specify a tag, Kubernetes assumes you mean the tag
+    <code>latest</code>", and the advice to avoid <code>:latest</code> in production.</li>
+    <li id="src-3"><a href="https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/">Kubernetes
+    — Resource Management for Pods and Containers</a>: requests, limits, and where they sit in a
+    container spec.</li>
+    <li id="src-4"><a href="https://kubernetes.io/docs/tasks/configure-pod-container/security-context/">Kubernetes
+    — Configure a Security Context for a Pod or Container</a>.</li>
+    <li id="src-5"><a href="https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/">Kubernetes
+    — Configure Liveness, Readiness and Startup Probes</a>.</li>
+    <li>The checker's answer table was produced by a reference solution run on this machine against
+    OPA 1.19.0 and conftest (dev build), and each trap in the debrief was confirmed by breaking that
+    solution on purpose and watching <code>check.sh</code> report it. The output in section 2 is
+    verbatim.</li>
+  </ul>
+
+  <h3>When you want a second opinion</h3>
+  <p>Once your policies are green, "is this how you would write it?" is a taste question. Paste a
+  requirement and your rule as a <a href="https://play.openpolicyagent.org/">Rego Playground</a>
+  link in <a href="https://github.com/orgs/open-policy-agent/discussions">OPA Community
+  Discussions</a> or the <code>#help</code> channel of <a
+  href="https://slack.openpolicyagent.org/">OPA Slack</a>.</p>
+
+  <p class="crumb"><a href="../index.html">↑ Back to the course index</a></p>
+
+</footer>
+
+</main>
+
+<script src="../../assets/syntax-highlight-code.js"></script>
+<script src="../../assets/recall-prompt.js"></script>
+<script src="../../assets/drill-checklist.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>

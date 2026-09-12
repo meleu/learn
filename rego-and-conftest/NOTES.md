@@ -55,7 +55,8 @@ Rego v1 is default: `import rego.v1` is a no-op; v0 bodiless rules (`p { ... }`)
 ## Shared assets
 
 `../assets/` is shared with sibling workspaces and moves independently — `ls ../assets/` at the
-start of each session. `code-copy-button.js` (arrived from outside) is wired into all 5 lesson
+start of each session. `hint-details.css` added by lesson 6 (collapsed opt-in hints).
+`code-copy-button.js` (arrived from outside) is wired into all 5 lesson
 and 3 reference pages, but not `index.html`. `rego-and-or-grid.css` added by lesson 4.
 
 ## Flashcards
@@ -64,6 +65,7 @@ and 3 reference pages, but not `index.html`. `rego-and-or-grid.css` added by les
 file: an H1, a line giving note type + card count + a relative link back to the lesson, then
 cards as `**N. Front:**` / `**Back:**` pairs. Markdown, hand-editable; the user imports into
 Anki themselves (offer a TSV conversion, do not commit one). Lessons 1-5 carded in s8, 35 cards.
+Lesson 6 carded in s9, 7 cards (42 total).
 
 Interleaving is deliberate and will look like duplication in a shuffled deck: the undefined
 thread is carded four times over four lessons (L1 #4/#5, L2 #7, L3 #5, L5 #5) as four costumes
@@ -99,6 +101,32 @@ it fighting them, split it into four cloze cards rather than shortening the answ
    prompt's whole-array bug. §3 opens by adding `endswith` to that same query (3 rows → 2) so the
    rule body arrives as "the query you already wrote". Cut: the OPA v0.34.0 chronology and `src-5`.
    The wildcard verdict and the deeply-nested callout now follow all three forms' walkthroughs.
+
+6. `0006-translate-the-requirements.html` — **practice-only, at the user's explicit ask (s9)**: "totally
+   focused on practice", natural-language requirements to translate, only L1-5 knowledge. So no quiz
+   this time (overrides the both-modes default for this lesson only); drill + one debrief recall.
+   `exercises/006/` ships **pre-built** (first time we wrote the files rather than heredocs in a
+   drill): six manifests + `check.sh`. User writes `policy/` only. Requirements K8S-01..07, messages
+   must start `[K8S-NN]`; `check.sh` compares (ID, FAIL/WARN, file) → count against a table and prints
+   `·` for "no messages at all: not written yet, or passing silently". Answer table is readable in
+   the script — said so on the page rather than hiding it.
+   **Reference solution lives only in the session scratchpad, never in the workspace.** Designed
+   traps, each verified caught by breaking the solution: K8S-02 undefined namespace in `sprintf`
+   (api.yaml); K8S-03 `< 2` without the missing case (api.yaml), and missing case without kind guard
+   (flags both Services + Pod); K8S-04/05/06 Deployment-only path misses `debug-pod.yaml` (K8S-06's
+   only violation → shows as `·`); K8S-06 existence vs value (`worker.yaml` has `privileged: false`).
+   `worker.yaml` breaks nothing on purpose. Hints are `<details class="hint">` pointing at lesson §s.
+   Pod path hint nudges a `contains` helper collecting containers from both paths — **untaught
+   synthesis**, verified working; watch whether they find it or duplicate rules. Untagged image
+   (`nginx`) evading `endswith` is left as an ask-teacher hook (needs `contains()` builtin or similar).
+   Primary source: conftest's `examples/kubernetes/policy` — v1, but uses `import data.kubernetes`
+   and `msg =`; both flagged as questions to bring back. **When they report back: review their
+   `policy/` like a code review, write a learning record, and consider a "requirement → Rego shape"
+   reference built from their solutions rather than mine.**
+   `regal` briefly missed PATH in s9; user fixed it (0.42.0, linuxbrew, as before). Regal on the
+   reference solution: `directory-package-mismatch` (scratchpad artifact) + **`messy-rule`** ×2 —
+   `deny`/`warn` definitions split by the `containers` helper in between. Not in the lesson. Likely to
+   show up in their single-file solution → good review hook: group definitions of one name together.
 
 Sequence was changed by the user after lesson 2 (LR-0004): go straight to conftest, deferring the
 fundamentals items that became lessons 4–5.

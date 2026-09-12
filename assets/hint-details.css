@@ -1,0 +1,32 @@
+/* hint-details.css — Opt-in, collapsed hints for practice tasks, built on native <details class="hint"><summary>Hint</summary>…</details>. Quiet until opened, so a hint never catches the eye before the learner has tried. Pairs with base.css. */
+
+details.hint {
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0.6rem 0 0;
+  color: var(--ink-soft);
+}
+
+details.hint > summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 1px dotted var(--ink-faint);
+}
+
+details.hint > summary::-webkit-details-marker { display: none; }
+details.hint > summary::before { content: "+ "; }
+details.hint[open] > summary::before { content: "− "; }
+details.hint > summary:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+details.hint > :not(summary) {
+  margin: 0.5rem 0 0;
+  padding-left: 0.8rem;
+  border-left: 2px solid var(--rule);
+}

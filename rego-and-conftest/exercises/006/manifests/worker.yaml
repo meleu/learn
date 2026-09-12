@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: jobs
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: worker
+          image: myco/worker:0.9.1
+          readinessProbe:
+            exec:
+              command: ["cat", "/tmp/ready"]
+          securityContext:
+            privileged: false
+          resources:
+            limits:
+              memory: 128Mi
