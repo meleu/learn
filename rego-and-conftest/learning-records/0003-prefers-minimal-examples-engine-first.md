@@ -1,19 +1,12 @@
 # Prefers minimal examples, and the engine before the wrapper
 
-After reading the first draft of lesson 1, the user asked for two changes: replace the Kubernetes
-Deployment example with the simplest possible one (an `input.age >= 18` age check), and remove
-conftest from the lesson entirely so the fundamentals could be explored in plain `opa` first.
+**Status**: point 2 superseded by LR-0007; point 1 active.
 
-**Evidence**: unprompted request, with a concrete reference to a simpler treatment of the same
-material from an earlier course attempt.
+After L1's first draft, the user asked to replace the Kubernetes Deployment example with the simplest one possible (`input.age >= 18`) and to remove conftest so fundamentals were explored in plain `opa` first.
 
-**Implications**: two standing constraints on how lessons get designed here.
+**Evidence**: unprompted, citing a simpler treatment from an earlier course attempt.
 
-1. **When the concept is the point, strip the domain.** Realistic config competes for working
-   memory with the idea being taught. Work-shaped examples (Kubernetes, Dockerfile, `pom.xml`)
-   are for lessons where the *format itself* is the subject — not for introducing language
-   mechanics.
-2. **Teach the engine before the wrapper.** Conftest is deferred until Rego fundamentals are
-   solid, because learning the wrapper first produces someone who copy-pastes policies they
-   cannot debug. This also serves the teaching-others goal in LR-0002: the user needs to answer
-   coworkers' "but why does it do that?", which requires the layer underneath.
+**Implications**
+
+1. **When the concept is the point, strip the domain.** Realistic config competes for working memory. Work-shaped examples (Kubernetes, Dockerfile, `pom.xml`) only where the format itself is the subject.
+2. **Engine before wrapper.** Learning conftest first produces someone who copy-pastes policies they can't debug; the user also needs the layer underneath to answer coworkers' "why does it do that?" (LR-0002).

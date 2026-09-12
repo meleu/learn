@@ -312,7 +312,7 @@ block in a 300-line manifest.</figcaption>
 <p><strong>Prefer form 1 by default.</strong> Not because the wildcard is old or deprecated — it is
 current, supported Rego, and Regal does not flag it even with every rule enabled (verified locally
 against Regal 0.42.0). The argument is <em>ambiguity</em>, and it is the style guide's own: <a
-href="https://github.com/open-policy-agent/rego-style-guide#prefer-some--in-for-iteration">"Using the
+href="https://github.com/open-policy-agent/rego-style-guide/blob/main/style-guide.md#prefer-some--in-for-iteration">"Using the
 <code>some</code> .. <code>in</code> construct for iteration removes ambiguity around iteration vs.
 membership checks, and is generally more pleasant to read."</a><a href="#src-4">⁴</a> Section 5 was
 that overloading in its purest form — on a set, <code>s[x]</code> is a membership test, not a
@@ -603,8 +603,8 @@ opa eval 'a := [10, 20, 30]; a[1]' --format pretty</code></pre>
 <footer class="colophon">
 
   <h3>Read this next (primary source)</h3>
-  <p><a href="https://www.openpolicyagent.org/docs/policy-language#iteration">OPA Docs — Policy
-  Language, <em>Iteration</em></a>, and the <em>Variables</em> section just above it. Short, and
+  <p><a href="https://www.openpolicyagent.org/docs/policy-language#variables">OPA Docs — Policy
+  Language, <em>Variables</em></a>, and the <em>References</em> section just below it. Short, and
   the source of the framing on this page: variables are how you ask questions of collections, not
   how you step through them. Read <a
   href="https://www.openpolicyagent.org/docs/policy-language#universal-quantification-for-all">Universal
@@ -656,9 +656,9 @@ opa eval 'a := [10, 20, 30]; a[1]' --format pretty</code></pre>
     href="https://www.openpolicyagent.org/docs/policy-language#universal-quantification-for-all">OPA
     Docs — Universal Quantification (FOR ALL)</a>: the <code>every</code> keyword, and the
     negation-of-existence pattern it replaced.</li>
-    <li id="src-4"><a href="https://github.com/open-policy-agent/rego-style-guide#prefer-some--in-for-iteration">Rego
+    <li id="src-4"><a href="https://github.com/open-policy-agent/rego-style-guide/blob/main/style-guide.md#prefer-some--in-for-iteration">Rego
     Style Guide — <em>Prefer <code>some .. in</code> for iteration</em></a>, and
-    <em><a href="https://github.com/open-policy-agent/rego-style-guide#dont-use-undeclared-variables">Don't
+    <em><a href="https://github.com/open-policy-agent/rego-style-guide/blob/main/style-guide.md#dont-use-undeclared-variables">Don't
     use undeclared variables</a></em>: the ambiguity argument, the deeply-nested exception, and
     <code>topics[_]</code> listed as an accepted fix for an undeclared variable.</li>
     <li id="src-3"><a
