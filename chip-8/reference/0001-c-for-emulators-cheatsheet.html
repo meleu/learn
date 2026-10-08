@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C for Emulators</title>
+<link rel="stylesheet" href="../../assets/base.css">
+<script src="../../assets/syntax-highlight-code.js" defer></script>
+<script src="../../assets/code-copy-button.js" defer></script>
+</head>
+<body>
+<main class="sheet">
+
+<p class="crumb"><a href="../index.html">↑ Course index</a></p>
+
+<header class="masthead">
+  <p class="eyebrow">Reference · CHIP-8 in C</p>
+  <h1>C for emulators</h1>
+  <p class="standfirst">The C semantics an emulator leans on, compressed. This sheet grows with each lesson.</p>
+</header>
+
+<h2>Exact-width types</h2>
+<p class="note">Lesson <a href="../lessons/0001-the-machine-is-just-data.html">1</a> · <a href="https://beej.us/guide/bgc/html/split/fixed-width-integer-types.html">Beej ch. 37</a></p>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Type</th><th>Range</th><th>Use for</th><th>printf</th></tr></thead>
+  <tbody>
+    <tr><td><code>uint8_t</code></td><td>0 … 255</td><td>bytes of RAM, V registers, timers, sp</td><td><code>%u</code> · <code>%02X</code></td></tr>
+    <tr><td><code>uint16_t</code></td><td>0 … 65535</td><td>pc, I, stack entries, opcodes</td><td><code>%u</code> · <code>%04X</code></td></tr>
+    <tr><td><code>size_t</code></td><td>unsigned, platform width</td><td><code>sizeof</code> results, byte counts</td><td><code>%zu</code></td></tr>
+  </tbody>
+</table>
+</div>
+<p>Include <code>&lt;stdint.h&gt;</code>. Avoid <code>int</code> (only guaranteed ≥ 16 bits) and plain <code>char</code> (signedness is implementation-defined) for hardware state.</p>
+
+<h2>Wraparound &amp; promotion</h2>
+<ul>
+  <li><strong>Unsigned</strong> arithmetic wraps modulo 2<sup>n</sup>. It is well-defined (<a href="https://en.cppreference.com/w/c/language/operator_arithmetic#Overflows">cppreference</a>).</li>
+  <li><strong>Signed</strong> overflow is <em>undefined behavior</em>. Keep emulator state unsigned.</li>
+  <li><strong>Integer promotion:</strong> operands narrower than <code>int</code> are widened to <code>int</code> before arithmetic (<a href="https://en.cppreference.com/w/c/language/conversion#Integer_promotions">cppreference</a>). Truncation happens only on assignment back to a narrow type.</li>
+</ul>
+
+<pre><code class="lang-c">uint8_t v = 0xFF; v += 1;          // 0
+uint8_t z = 0;    z -= 1;          // 255
+
+// add with carry: compute wide, then store narrow, flag LAST
+int sum   = c8.V[x] + c8.V[y];
+c8.V[x]   = sum;                   // truncated to 8 bits
+c8.V[0xF] = sum &gt; 0xFF;           // 1 if carry</code></pre>
+
+<h2>Machine state</h2>
+<p class="note"><a href="https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#specifications">Langhoff, Specifications</a></p>
+<pre><code class="lang-c">typedef struct {
+    uint8_t  memory[4096];     // 0x000–0xFFF; programs load at 0x200
+    uint8_t  V[16];            // V0..VF (VF = flag)
+    uint16_t I;                // index register
+    uint16_t pc;               // program counter
+    uint16_t stack[16];        // return addresses
+    uint8_t  sp;               // stack pointer
+    uint8_t  delay_timer;      // −1 at 60 Hz until 0
+    uint8_t  sound_timer;      // beeps while &gt; 0
+    uint8_t  display[64 * 32]; // 1 byte per pixel
+    uint8_t  keypad[16];       // keys 0x0–0xF
+} Chip8;
+
+static Chip8 c8;               // static ⇒ zero-initialized</code></pre>
+
+<h2>Memory map</h2>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Address</th><th>Contents</th></tr></thead>
+  <tbody>
+    <tr><td><code>0x000–0x1FF</code></td><td>Reserved (originally the interpreter); fonts conventionally at <code>0x050–0x09F</code></td></tr>
+    <tr><td><code>0x200–0xFFF</code></td><td>Program ROM and work RAM</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Build</h2>
+<pre><code class="lang-shell">$ gcc -std=c11 -Wall -Wextra -pedantic -o chip8 main.c</code></pre>
+
+<p class="crumb"><a href="../index.html">↑ Back to the course index</a></p>
+</main>
+</body>
+</html>

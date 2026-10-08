@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Machine Is Just Data</title>
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" href="../../assets/hint-details.css">
+<script src="../../assets/syntax-highlight-code.js" defer></script>
+<script src="../../assets/code-copy-button.js" defer></script>
+<script src="../../assets/quiz-multiple-choice.js" defer></script>
+<script src="../../assets/recall-prompt.js" defer></script>
+</head>
+<body>
+<main class="sheet">
+
+<p class="crumb"><a href="../index.html">↑ Course index</a></p>
+
+<header class="masthead">
+  <p class="eyebrow">Lesson 1 · C for emulators</p>
+  <h1>The machine is just data</h1>
+  <p class="standfirst">An emulator's variables <em>are</em> the hardware. In this lesson you pick the right C types to hold a CHIP-8: exact-width unsigned integers, an array for RAM, and one struct for everything. By the end you'll have compiled the struct your emulator is built on.</p>
+</header>
+
+<div data-recall="Warm-up — from memory, before reading">
+  <p class="recall-q">In C, how many bits is an <code>int</code>? Is that guaranteed? And what happens when a <em>signed</em> <code>int</code> overflows?</p>
+  <div class="recall-answer">
+    <p>Usually 32 bits on modern machines, but the standard only guarantees <em>at least</em> 16. Signed overflow is <strong>undefined behavior</strong>: the compiler may assume it never happens. Both facts push us away from <code>int</code> for hardware state.</p>
+  </div>
+</div>
+
+<h2>1 · What a CHIP-8 is made of</h2>
+
+<p>Everything the CHIP-8 "is" fits in a short list. This is from the <a href="https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#specifications">Specifications</a> section of Tobias Langhoff's guide:</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Component</th><th>Size / shape</th></tr></thead>
+  <tbody>
+    <tr><td>Memory (RAM)</td><td>4 KB: 4096 bytes, addresses <code>0x000</code>–<code>0xFFF</code></td></tr>
+    <tr><td>Registers V0–VF</td><td>16 × 8-bit. VF doubles as a flag register</td></tr>
+    <tr><td>Index register I</td><td>16-bit, points into memory</td></tr>
+    <tr><td>Program counter PC</td><td>points at the current instruction</td></tr>
+    <tr><td>Stack</td><td>16-bit return addresses (at least 16 entries)</td></tr>
+    <tr><td>Delay timer, sound timer</td><td>8-bit each, count down at 60 Hz</td></tr>
+    <tr><td>Display</td><td>64 × 32 monochrome pixels</td></tr>
+    <tr><td>Keypad</td><td>16 keys, <code>0</code>–<code>F</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Every row is a number of a fixed width, or a fixed-size array of them. So the job of this lesson is to choose C types whose width <em>matches the hardware exactly</em>.</p>
+
+<h2>2 · Exact widths: <code>&lt;stdint.h&gt;</code></h2>
+
+<p>C's classic types only promise <em>minimum</em> sizes. Whether plain <code>char</code> is signed is also left to the implementation (<a href="https://en.cppreference.com/w/c/language/arithmetic_types">cppreference</a>). For hardware you want the width spelled out, so use the <a href="https://beej.us/guide/bgc/html/split/fixed-width-integer-types.html">fixed-width types</a> from <code>&lt;stdint.h&gt;</code>:</p>
+
+<pre><code class="lang-c">#include &lt;stdint.h&gt;
+
+uint8_t  vx;   // exactly 8 bits, 0..255      — a register
+uint16_t pc;   // exactly 16 bits, 0..65535   — an address</code></pre>
+
+<p class="note">Coming from Go: <code>uint8_t</code> is Go's <code>uint8</code>/<code>byte</code>, and <code>uint16_t</code> is <code>uint16</code>. The names differ, but the idea is the same.</p>
+
+<h2>3 · Unsigned wraps, like real hardware</h2>
+
+<p>An 8-bit register that holds 255 and gets +1 becomes 0. C gives you this for free with <em>unsigned</em> types: <q>Unsigned integer arithmetic is always performed modulo 2<sup>n</sup></q> (<a href="https://en.cppreference.com/w/c/language/operator_arithmetic#Overflows">cppreference, Overflows</a>). Signed overflow, on the other hand, is undefined behavior. So the rule is simple: <strong>all emulator state is unsigned.</strong></p>
+
+<pre><code class="lang-c">uint8_t vx = 0xFF;
+vx += 1;        // vx == 0    (wraps, well-defined)
+
+uint8_t z = 0;
+z -= 1;         // z == 255  (wraps the other way)</code></pre>
+
+<p>There's a twist that a Go programmer wouldn't expect. Before arithmetic, C <a href="https://en.cppreference.com/w/c/language/conversion#Integer_promotions">promotes</a> anything smaller than <code>int</code> up to <code>int</code>. The <em>expression</em> <code>a + b</code> is therefore computed in full. It only wraps when you store it back into a <code>uint8_t</code>:</p>
+
+<pre><code class="lang-c">uint8_t a = 200, b = 100;
+int     sum    = a + b;   // 300  — promoted to int, nothing lost yet
+uint8_t stored = a + b;   // 44   — 300 mod 256, truncated on assignment
+int     carry  = sum &gt; 0xFF;  // 1 — the carry you'll put in VF</code></pre>
+
+<div class="key-idea">
+  <p>Hold state in <strong>unsigned exact-width</strong> types so it wraps the way the hardware does. When you need a carry or borrow, compute it from the full-width result <em>before</em> storing it back into 8 bits.</p>
+</div>
+
+<h2>4 · Arrays are memory; a struct is the machine</h2>
+
+<p>In C, RAM is just <code>uint8_t memory[4096]</code>, and an address is just an index: <code>memory[0x200]</code> is the byte at address <code>0x200</code>. Programs are loaded there (<a href="https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#memory">Memory</a>). A <a href="https://beej.us/guide/bgc/html/split/structs.html">struct</a> collects all the components into one value you can hand around. With a <a href="https://beej.us/guide/bgc/html/split/typedef-making-new-types.html"><code>typedef</code></a> you can drop the <code>struct</code> keyword at every use:</p>
+
+<pre><code class="lang-c">typedef struct {
+    uint8_t  memory[4096];   // address == index
+    uint8_t  V[16];          // V0..VF
+    uint16_t pc;
+    /* ...you'll finish this... */
+} Chip8;</code></pre>
+
+<h2>Check yourself</h2>
+
+<div data-quiz>
+  <p class="quiz-q">After <code>uint8_t vx = 250; vx += 10;</code> what does <code>vx</code> hold?</p>
+  <ul class="quiz-options">
+    <li data-correct><code>4</code></li>
+    <li><code>260</code></li>
+    <li><code>255</code></li>
+    <li><code>-6</code></li>
+  </ul>
+  <p class="quiz-explain">260 mod 256 = 4. Unsigned wraps; it doesn't saturate at 255.</p>
+</div>
+
+<div data-quiz>
+  <p class="quiz-q">With <code>uint8_t a = 200, b = 100;</code> what is <code>int s = a + b;</code>?</p>
+  <ul class="quiz-options">
+    <li data-correct><code>300</code></li>
+    <li><code>44</code></li>
+    <li><code>255</code></li>
+    <li><code>-56</code></li>
+  </ul>
+  <p class="quiz-explain">Both operands are promoted to <code>int</code> before the addition, and the result goes into an <code>int</code>, so nothing is truncated. That's what lets you detect a carry.</p>
+</div>
+
+<div data-quiz>
+  <p class="quiz-q">Why keep every register and address in an <em>unsigned</em> type?</p>
+  <ul class="quiz-options">
+    <li data-correct>Signed overflow is undefined behavior</li>
+    <li>Unsigned arithmetic is always faster</li>
+    <li>Signed types use more memory</li>
+    <li>Compilers reject signed array indexes</li>
+  </ul>
+  <p class="quiz-explain">Unsigned arithmetic is defined to wrap modulo 2<sup>n</sup>. Signed overflow is UB, and the optimizer is allowed to assume it never happens.</p>
+</div>
+
+<div data-quiz>
+  <p class="quiz-q">At which address does a CHIP-8 program start?</p>
+  <ul class="quiz-options">
+    <li data-correct><code>0x200</code></li>
+    <li><code>0x000</code></li>
+    <li><code>0x050</code></li>
+    <li><code>0xFFF</code></li>
+  </ul>
+  <p class="quiz-explain">The interpreter itself lived in the first 512 bytes (0x000–0x1FF) on the original COSMAC VIP, so programs start at 0x200. Fonts conventionally sit at 0x050.</p>
+</div>
+
+<h2>Your win: compile the machine</h2>
+
+<p>Make a directory for your emulator (say <code>~/src/chip8</code>) and do the following. <strong>Use the table in section 1, not the snippet above.</strong> Write it yourself.</p>
+
+<ol>
+  <li>Create <code>chip8.h</code> with a complete <code>typedef struct { … } Chip8;</code> covering <em>every</em> row of the table: memory, V, I, pc, stack plus a stack pointer, both timers, display and keypad.</li>
+  <li>Create <code>main.c</code>. Include <code>chip8.h</code>, declare a <code>static Chip8 c8;</code>, set <code>c8.pc = 0x200;</code>, and print it with <code>printf("pc = 0x%03X\n", c8.pc);</code>.</li>
+  <li>In the same <code>main</code>, reproduce the <code>200 + 100</code> experiment. <em>Predict</em> all three values on paper first, then print them.</li>
+  <li>Compile with warnings on, and fix every warning:
+<pre><code class="lang-shell">$ gcc -std=c11 -Wall -Wextra -pedantic -o chip8 main.c
+$ ./chip8</code></pre></li>
+  <li>Bonus: print <code>sizeof(Chip8)</code> with <code>%zu</code>. Add up your fields by hand. Does the total match? If not, ask me why.</li>
+</ol>
+
+<details class="hint"><summary>Hint: what type for the display?</summary>
+  <p>Simplest is one byte per pixel, <code>uint8_t display[64 * 32];</code>, and that's fine. Packing 8 pixels per byte saves memory but costs bit-fiddling. We don't need that yet.</p>
+</details>
+
+<details class="hint"><summary>Hint: what type for the stack pointer?</summary>
+  <p>It only has to index 16 entries, so a <code>uint8_t sp</code> is enough. The stack itself holds addresses, so it's <code>uint16_t stack[16]</code>.</p>
+</details>
+
+<details class="hint"><summary>Hint: why <code>static</code>?</summary>
+  <p><code>static</code> gives the variable static storage duration: it's zero-initialized and doesn't live on the stack. A local <code>Chip8 c8;</code> without it would contain garbage, so you'd have to clear it yourself.</p>
+</details>
+
+<div data-recall="Close the lesson — answer from memory">
+  <p class="recall-q">Register VX holds <code>0xF0</code> and you add <code>0x20</code>. Write the two C lines that store the wrapped result in VX <em>and</em> set VF to the carry.</p>
+  <div class="recall-answer">
+<pre><code class="lang-c">int sum = c8.V[x] + 0x20;      // 0x110 = 272, full width
+c8.V[x] = sum;  c8.V[0xF] = sum &gt; 0xFF;  // V[x] = 0x10, VF = 1</code></pre>
+    <p>The order matters, and you'll meet it again in opcode <code>8XY4</code>. If X is F, writing VX first and then VF would clobber the result, so the flag gets written <em>last</em>.</p>
+  </div>
+</div>
+
+<div class="ask-teacher">
+  <strong>Stuck or curious?</strong> Ask me (your teacher, the agent) anything: why <code>sizeof</code> isn't the sum of the fields, what <code>%03X</code> means, how this compares to Go. Paste your <code>chip8.h</code> and I'll review it. When it compiles cleanly, tell me and we'll do lesson 2: <em>slicing an opcode into nibbles with bitwise operators</em>.
+</div>
+
+<footer class="colophon">
+  <h3>Primary source</h3>
+  <ul>
+    <li>Tobias V. Langhoff, <a href="https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#specifications"><em>Guide to making a CHIP-8 emulator</em></a>: read <em>Specifications</em> through <em>Timers</em> (about 10 minutes). This is the spec you're implementing.</li>
+  </ul>
+  <h3>Also cited</h3>
+  <ul>
+    <li>Beej, <a href="https://beej.us/guide/bgc/html/split/fixed-width-integer-types.html">Fixed Width Integer Types</a>, <a href="https://beej.us/guide/bgc/html/split/structs.html">Structs</a>, <a href="https://beej.us/guide/bgc/html/split/typedef-making-new-types.html">typedef</a></li>
+    <li>cppreference: <a href="https://en.cppreference.com/w/c/language/operator_arithmetic#Overflows">Overflows</a>, <a href="https://en.cppreference.com/w/c/language/conversion#Integer_promotions">Integer promotions</a>, <a href="https://en.cppreference.com/w/c/language/arithmetic_types">Arithmetic types</a></li>
+  </ul>
+  <h3>Reference</h3>
+  <ul>
+    <li><a href="../reference/0001-c-for-emulators-cheatsheet.html">C for emulators: cheat sheet</a></li>
+  </ul>
+  <p class="crumb"><a href="../index.html">↑ Back to the course index</a></p>
+</footer>
+
+</main>
+</body>
+</html>

@@ -1,4 +1,4 @@
-/* syntax-highlight-code.js — Tiny dependency-free syntax highlighter for the languages that show up across these lessons: rego, json, yaml, dockerfile and shell. Highlights <pre><code class="lang-XXX"> blocks. */
+/* syntax-highlight-code.js — Tiny dependency-free syntax highlighter for the languages that show up across these lessons: rego, json, yaml, dockerfile, shell and c. Highlights <pre><code class="lang-XXX"> blocks. */
 
 (function () {
   "use strict";
@@ -21,6 +21,9 @@
 
   var REGO_KEYWORDS = ["package", "import", "default", "not", "if", "contains", "some", "every", "in", "as", "with", "else", "null", "true", "false"];
   var REGO_BUILTINS = ["sprintf", "count", "sum", "max", "min", "concat", "split", "startswith", "endswith", "contains", "lower", "upper", "trim", "trim_space", "regex", "object", "json", "array", "sort", "to_number", "is_string", "is_number", "is_array", "is_object", "is_boolean", "is_null", "walk", "print", "type_name", "format_int", "indexof", "substring", "replace", "glob", "units", "numbers", "strings", "time", "semver", "yaml", "sets"];
+
+  var C_KEYWORDS = ["auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register", "return", "short", "signed", "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "bool", "true", "false", "NULL"];
+  var C_BUILTINS = ["uint8_t", "uint16_t", "uint32_t", "uint64_t", "int8_t", "int16_t", "int32_t", "int64_t", "size_t", "FILE", "printf", "fprintf", "fopen", "fread", "fclose", "malloc", "free", "memset", "memcpy", "main"];
 
   function esc(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -118,8 +121,26 @@
       return tokenize(src, protect, function (chunk) {
         return esc(chunk)
           .replace(/^(\s*)\$ /gm, '$1<span class="tok-prompt">$ </span>')
-          .replace(/\b(opa|conftest|kubectl|docker|helm|git|jq|curl|gpg|gpg2|pass|gopass|bw|wl-copy|xclip|ssh|scp|rsync)\b/g, '<span class="tok-keyword">$1</span>')
+          .replace(/\b(opa|conftest|kubectl|docker|helm|git|jq|curl|gpg|gpg2|pass|gopass|bw|wl-copy|xclip|ssh|scp|rsync|gcc|clang|cc|make|xxd|hexdump)\b/g, '<span class="tok-keyword">$1</span>')
           .replace(/(^|\s)(--?[a-zA-Z][\w-]*)/g, '$1<span class="tok-builtin">$2</span>');
+      });
+    },
+
+    c: function (src) {
+      var protect = [
+        { re: /\/\/[^\n]*/g, cls: "tok-comment" },
+        { re: /\/\*[\s\S]*?\*\//g, cls: "tok-comment" },
+        { re: /"(?:[^"\\\n]|\\.)*"/g, cls: "tok-string" },
+        { re: /'(?:[^'\\\n]|\\.)*'/g, cls: "tok-string" },
+        { re: /^[ \t]*#[ \t]*[a-z]+/gm, cls: "tok-special" }
+      ];
+      var kw = wordRe(C_KEYWORDS);
+      var bi = wordRe(C_BUILTINS);
+      return tokenize(src, protect, function (chunk) {
+        return esc(chunk)
+          .replace(kw, '<span class="tok-keyword">$1</span>')
+          .replace(bi, '<span class="tok-builtin">$1</span>')
+          .replace(/\b(0[xX][0-9A-Fa-f]+|\d+)[uUlL]*\b/g, '<span class="tok-number">$&</span>');
       });
     }
   };
