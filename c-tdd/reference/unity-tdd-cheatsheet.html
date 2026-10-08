@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unity TDD Cheat Sheet</title>
+<link rel="stylesheet" href="../../assets/base.css">
+</head>
+<body>
+<main class="sheet">
+
+<header class="masthead">
+  <p class="eyebrow">C with TDD · Reference</p>
+  <h1>Unity + TDD cheat sheet</h1>
+  <p class="standfirst">The loop, the skeleton, the Makefile, and the assertions you'll actually use.</p>
+</header>
+
+<h2>The loop</h2>
+<ol>
+  <li><strong>Write a test</strong> for the next small requirement.</li>
+  <li><strong>Make it compile</strong>: add only the declaration or stub the compiler and linker demand.</li>
+  <li><strong>Run it and see it fail</strong>, and check that the failure message is meaningful.</li>
+  <li><strong>Write just enough code</strong> to make it pass.</li>
+  <li><strong>Refactor</strong> the production code <em>and</em> the tests, staying green.</li>
+</ol>
+<p class="note">After <a href="https://quii.gitbook.io/learn-go-with-tests/go-fundamentals/hello-world">Learn Go with Tests, “Hello, World”</a>.</p>
+
+<h2>Test file skeleton</h2>
+<pre><code class="lang-c">#include "unity.h"
+#include "hello.h"           /* the module under test */
+
+void setUp(void) {}           /* runs before EVERY test; required */
+void tearDown(void) {}        /* runs after EVERY test;  required */
+
+void test_thing_does_x(void)
+{
+    TEST_ASSERT_EQUAL_STRING("expected", actual());
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_thing_does_x);   /* unlisted tests never run */
+    return UNITY_END();            /* exit status = number of failures */
+}</code></pre>
+
+<h2>Makefile</h2>
+<pre><code class="lang-make">CC       := cc
+CFLAGS   := -std=c17 -Wall -Wextra -Wpedantic -g
+CPPFLAGS := -Ivendor/unity
+
+test: build/test_hello
+	./build/test_hello
+
+build/test_hello: test/test_hello.c vendor/unity/unity.c | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
+
+build:
+	mkdir -p $@
+
+clean:
+	rm -rf build
+
+.PHONY: test clean</code></pre>
+<div class="table-scroll">
+<table>
+  <tr><th>Symbol</th><th>Means</th></tr>
+  <tr><td><code>$@</code></td><td>the target</td></tr>
+  <tr><td><code>$^</code></td><td>all normal prerequisites</td></tr>
+  <tr><td><code>$&lt;</code></td><td>the first prerequisite</td></tr>
+  <tr><td><code>| dir</code></td><td>order-only: must exist, but its timestamp is ignored</td></tr>
+  <tr><td>TAB</td><td>recipe lines must start with one, or you get <code>missing separator</code></td></tr>
+</table>
+</div>
+
+<h2>Assertions</h2>
+<p>Always <strong>expected first, actual second</strong>. Every assertion has a <code>_MESSAGE</code> variant that takes an extra string. Full list: <a href="https://github.com/ThrowTheSwitch/Unity/blob/master/docs/UnityAssertionsReference.md">Assertions Reference</a>.</p>
+<div class="table-scroll">
+<table>
+  <tr><th>Macro</th><th>Checks</th></tr>
+  <tr><td><code>TEST_ASSERT_TRUE(c)</code> / <code>_FALSE(c)</code></td><td>a condition</td></tr>
+  <tr><td><code>TEST_ASSERT_EQUAL_INT(e, a)</code></td><td>signed ints (also <code>_UINT8</code>, <code>_INT32</code>, <code>_size_t</code>, …)</td></tr>
+  <tr><td><code>TEST_ASSERT_EQUAL_HEX8(e, a)</code></td><td>same as above, but failures print in hex</td></tr>
+  <tr><td><code>TEST_ASSERT_EQUAL_STRING(e, a)</code></td><td>NUL-terminated strings, compared character by character</td></tr>
+  <tr><td><code>TEST_ASSERT_EQUAL_STRING_LEN(e, a, n)</code></td><td>the first <code>n</code> characters</td></tr>
+  <tr><td><code>TEST_ASSERT_EQUAL_MEMORY(e, a, n)</code></td><td><code>n</code> raw bytes</td></tr>
+  <tr><td><code>TEST_ASSERT_EQUAL_INT_ARRAY(e, a, n)</code></td><td><code>n</code> array elements</td></tr>
+  <tr><td><code>TEST_ASSERT_EQUAL_PTR(e, a)</code></td><td>pointer identity (same address)</td></tr>
+  <tr><td><code>TEST_ASSERT_NULL(p)</code> / <code>_NOT_NULL(p)</code></td><td>a pointer</td></tr>
+  <tr><td><code>TEST_FAIL_MESSAGE("…")</code></td><td>fail unconditionally</td></tr>
+  <tr><td><code>TEST_IGNORE()</code> / <code>TEST_IGNORE_MESSAGE("…")</code></td><td>skip this test</td></tr>
+</table>
+</div>
+
+<h2>Which stage broke?</h2>
+<div class="table-scroll">
+<table>
+  <tr><th>You see</th><th>Stage</th><th>Usually means</th></tr>
+  <tr><td><code>error: implicit declaration of …</code></td><td>compiler</td><td>missing <code>#include</code> or declaration</td></tr>
+  <tr><td><code>fatal error: unity.h: No such file</code></td><td>preprocessor</td><td>missing <code>-I</code> path</td></tr>
+  <tr><td><code>undefined reference to `x'</code></td><td>linker</td><td>declared but never defined, or a <code>.c</code> file missing from the command</td></tr>
+  <tr><td><code>file:line:test:FAIL: …</code></td><td>test run</td><td>an assertion failed: the code is wrong (or the test is)</td></tr>
+  <tr><td><code>missing separator</code></td><td>make</td><td>spaces where a TAB belongs</td></tr>
+</table>
+</div>
+
+<footer class="colophon">
+  <p>Lessons: <a href="../lessons/0001-unity-setup-red-then-green.html">1 · A red test, then a green one</a></p>
+  <p>Sources: <a href="https://github.com/ThrowTheSwitch/Unity/blob/master/docs/UnityGettingStartedGuide.md">Unity Getting Started</a> · <a href="https://www.gnu.org/software/make/manual/html_node/Automatic-Variables.html">GNU make Automatic Variables</a> · <a href="https://www.gnu.org/software/make/manual/html_node/Prerequisite-Types.html">Prerequisite Types</a></p>
+</footer>
+
+</main>
+<script src="../../assets/syntax-highlight-code.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+</body>
+</html>

@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unity Setup: Red, Then Green</title>
+<link rel="stylesheet" href="../../assets/base.css">
+<link rel="stylesheet" href="../../assets/hint-details.css">
+<style>
+  .tree { font-size: 0.78rem; }
+  .anatomy td:first-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+<main class="sheet">
+
+<header class="masthead">
+  <p class="eyebrow">C with TDD · Lesson 1</p>
+  <h1>A red test, then a green one</h1>
+  <p class="standfirst">Vendor Unity, write a Makefile by hand, and watch one assertion fail and then pass. About fifteen minutes, and every later lesson builds on it.</p>
+</header>
+
+<h2>Unity is three files, not a package</h2>
+
+<p>There's nothing to install. Unity's core is <em>“a single C file and a couple header files”</em>: <code>unity.c</code>, <code>unity.h</code> and <code>unity_internals.h</code>. You compile them straight into your test program <a href="https://github.com/ThrowTheSwitch/Unity/blob/master/docs/UnityGettingStartedGuide.md">[Getting Started]</a>. Everything else in the repository (Ruby scripts, examples, extras) is optional.</p>
+
+<p class="note margin">Coming from Go: <code>go test</code> writes <code>main</code> for you and finds every <code>TestXxx</code>. In C with plain Unity, <em>you</em> write <code>main</code> and list each test in it. Unity's Ruby helper can generate that runner, but we'll do it by hand so nothing is hidden.</p>
+
+<p>A Unity test file has four parts, all spelled out in the guide:</p>
+<ol>
+  <li><code>#include "unity.h"</code></li>
+  <li><code>setUp()</code> and <code>tearDown()</code>, which run before and after <em>every</em> test. They may be empty, but they must exist.</li>
+  <li>Test functions: <code>void test_something(void)</code>, holding <code>TEST_ASSERT_*</code> macros.</li>
+  <li><code>main()</code>: <code>UNITY_BEGIN()</code>, one <code>RUN_TEST(fn)</code> per test, then <code>return UNITY_END();</code></li>
+</ol>
+
+<p>That last <code>return</code> matters. <code>UNITY_END()</code> returns the <strong>number of failed tests</strong>, so the process exits non-zero when anything fails, and <code>make</code> (or CI) sees that.</p>
+
+<div class="key-idea">
+  <p>The test executable = <strong>Unity + your test file + the code under test</strong>, compiled and linked together. One test file → one executable.</p>
+</div>
+
+<h2>Build it</h2>
+
+<p>This is where you'll end up. It lives in this workspace under <code>code/hello/</code>, and Lesson 2 keeps growing it.</p>
+
+<pre class="tree"><code>code/hello/
+├── Makefile
+├── test/
+│   └── test_hello.c
+└── vendor/unity/
+    ├── unity.c
+    ├── unity.h
+    └── unity_internals.h</code></pre>
+
+<ol data-drill="c-tdd-0001-setup">
+  <li>
+    <p><strong>Make the directories and vendor Unity</strong>, pinned to the <a href="https://github.com/ThrowTheSwitch/Unity/releases/tag/v2.7.0">v2.7.0 release</a> so the files never change under you. Run this from the <code>c-tdd/</code> workspace:</p>
+<pre><code class="lang-shell">$ mkdir -p code/hello/vendor/unity code/hello/test
+$ cd code/hello
+$ for f in unity.c unity.h unity_internals.h; do
+    curl -fsSLo "vendor/unity/$f" \
+      "https://raw.githubusercontent.com/ThrowTheSwitch/Unity/v2.7.0/src/$f"
+  done
+$ echo 'build/' > .gitignore</code></pre>
+  </li>
+  <li>
+    <p><strong>Write the test first</strong>, with the wrong expectation on purpose. In TDD you always see red before green, because a test you've never seen fail might not be testing anything.</p>
+    <div class="code-label">test/test_hello.c</div>
+<pre><code class="lang-c">#include "unity.h"
+
+void setUp(void) {}
+void tearDown(void) {}
+
+void test_hello_world(void)
+{
+    TEST_ASSERT_EQUAL_STRING("Hello, world", "Hello, World");
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_hello_world);
+    return UNITY_END();
+}</code></pre>
+  </li>
+  <li>
+    <p><strong>Write the Makefile.</strong> Recipe lines (the indented ones) <em>must</em> start with a real TAB, not spaces. If you get <code>missing separator</code>, that's why. The copy button keeps the tabs.</p>
+    <div class="code-label">Makefile</div>
+<pre><code class="lang-make">CC       := cc
+CFLAGS   := -std=c17 -Wall -Wextra -Wpedantic -g
+CPPFLAGS := -Ivendor/unity
+
+test: build/test_hello
+	./build/test_hello
+
+build/test_hello: test/test_hello.c vendor/unity/unity.c | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
+
+build:
+	mkdir -p $@
+
+clean:
+	rm -rf build
+
+.PHONY: test clean</code></pre>
+    <details class="hint"><summary>What do <code>$^</code>, <code>$@</code> and <code>| build</code> mean?</summary>
+      <p><code>$@</code> is the target being built, and <code>$^</code> is all of its prerequisites <a href="https://www.gnu.org/software/make/manual/html_node/Automatic-Variables.html">[GNU make: Automatic Variables]</a>. Here that's both <code>.c</code> files. Anything after <code>|</code> is an <em>order-only</em> prerequisite: <code>build/</code> must exist first, but a change to its timestamp won't force a rebuild <a href="https://www.gnu.org/software/make/manual/html_node/Prerequisite-Types.html">[Prerequisite Types]</a>. <code>CPPFLAGS</code> holds preprocessor flags; <code>-Ivendor/unity</code> is what lets <code>#include "unity.h"</code> find the header.</p>
+    </details>
+  </li>
+  <li>
+    <p><strong>Run <code>make</code> and see red.</strong> You should get exactly this (apart from the build lines):</p>
+<pre><code>test/test_hello.c:8:test_hello_world:FAIL: Expected 'Hello, world' Was 'Hello, World' Character 7 Expected 'w' Was 'W'
+
+-----------------------
+1 Tests 1 Failures 0 Ignored
+FAIL
+make: *** [Makefile:6: test] Error 1</code></pre>
+  </li>
+  <li>
+    <p><strong>Make it green.</strong> Change <code>"Hello, World"</code> to <code>"Hello, world"</code> and run <code>make</code> again. You want <code>1 Tests 0 Failures 0 Ignored</code> and <code>OK</code>.</p>
+  </li>
+  <li>
+    <p><strong>Break it on purpose.</strong> Delete the <code>setUp</code> and <code>tearDown</code> lines and run <code>make</code>. Read the error before you open the next section, and decide which stage of the build complained. Then put the two lines back.</p>
+  </li>
+</ol>
+
+<h2>Reading what you just saw</h2>
+
+<h3>The Unity failure line</h3>
+<div class="table-scroll">
+<table class="anatomy">
+  <tr><th>Part</th><th>Meaning</th></tr>
+  <tr><td><code>test/test_hello.c:8</code></td><td>File and line of the failing assertion. Most editors let you jump straight to it.</td></tr>
+  <tr><td><code>test_hello_world</code></td><td>Which test failed: the function name you gave <code>RUN_TEST</code>.</td></tr>
+  <tr><td><code>Expected … Was …</code></td><td>The <strong>first</strong> argument is the expected value, the second is the actual one. Swap them and the message lies to you.</td></tr>
+  <tr><td><code>Character 7</code></td><td>The zero-based index where the strings first differ. <code>TEST_ASSERT_EQUAL_STRING</code> compares character by character, not by pointer <a href="https://github.com/ThrowTheSwitch/Unity/blob/master/docs/UnityAssertionsReference.md">[Assertions Reference]</a>.</td></tr>
+  <tr><td><code>Error 1</code></td><td><code>make</code> saw a non-zero exit, which is <code>UNITY_END()</code> returning <code>1</code> failure.</td></tr>
+</table>
+</div>
+
+<h3>Step 6: the linker, not the compiler</h3>
+<p>You should have seen <code>undefined reference to `setUp'</code> from <code>ld</code>. Both of your <code>.c</code> files <em>compiled</em> fine on their own: <code>unity.c</code> only needs to know that <code>setUp</code> is declared somewhere, and <code>unity.h</code> declares it. The error comes when the pieces are <em>linked</em> into one executable and nobody supplied the definition. The guide warns about exactly this: <em>“If your compiler complains that it can't find setUp or tearDown when it links, you'll know you need to at least include an empty function”</em> <a href="https://github.com/ThrowTheSwitch/Unity/blob/master/docs/UnityGettingStartedGuide.md">[Getting Started]</a>.</p>
+
+<div class="callout">
+  <p class="callout-title">The C refresher hiding in here</p>
+  <p><code>cc a.c b.c -o prog</code> does two jobs: it <em>compiles</em> each <code>.c</code> into an object file on its own, then <em>links</em> the object files together. A <strong>declaration</strong> (in a header) gets you past the compiler. A <strong>definition</strong> (in some <code>.c</code> file) has to exist for the linker. Go hides this split, and C doesn't. Lesson 2 leans on it when you add <code>hello.h</code> and <code>hello.c</code>.</p>
+</div>
+
+<h2>Check yourself</h2>
+
+<div data-recall="Write it from memory">
+  <p class="recall-q">Without scrolling up, write a complete Unity test file with one test asserting that <code>2 + 2</code> equals <code>4</code>. Use <code>TEST_ASSERT_EQUAL_INT(expected, actual)</code>.</p>
+  <div class="recall-answer">
+<pre><code class="lang-c">#include "unity.h"
+
+void setUp(void) {}
+void tearDown(void) {}
+
+void test_addition(void)
+{
+    TEST_ASSERT_EQUAL_INT(4, 2 + 2);
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_addition);
+    return UNITY_END();
+}</code></pre>
+    <p>Check: did you put expected first? Did you <code>return</code> <code>UNITY_END()</code>, not just call it?</p>
+  </div>
+</div>
+
+<div data-quiz>
+  <p class="quiz-q">You write a new test function but forget its <code>RUN_TEST</code> line in <code>main</code>. What happens on <code>make</code>?</p>
+  <ul class="quiz-options">
+    <li data-correct>The test silently never runs</li>
+    <li>The linker reports an error</li>
+    <li>The compiler stops with error</li>
+    <li>Unity finds and runs it</li>
+  </ul>
+  <p class="quiz-explain">With a hand-written runner, a test exists only if <code>main</code> calls it. Watch the <code>N Tests</code> count: if it didn't go up, your new test isn't running. (<code>-Wall</code> doesn't help here, because the function isn't <code>static</code>, so it never counts as unused.) This is another reason to see every new test fail first.</p>
+</div>
+
+<div data-quiz>
+  <p class="quiz-q">Your <code>main</code> ends with <code>UNITY_END(); return 0;</code>. One test fails. What does <code>make</code> report?</p>
+  <ul class="quiz-options">
+    <li data-correct>Success; the failure stays hidden</li>
+    <li>Error 1 from failing test</li>
+    <li>A warning about unused values</li>
+    <li>Error 2 from linker step</li>
+  </ul>
+  <p class="quiz-explain">Unity still prints <code>FAIL</code>, but the process exits 0, so <code>make</code> and any CI pipeline think everything passed. <code>return UNITY_END();</code> passes the failure count through as the exit status.</p>
+</div>
+
+<div data-quiz>
+  <p class="quiz-q">In the recipe <code>$(CC) … $^ -o $@</code>, what does <code>$@</code> expand to?</p>
+  <ul class="quiz-options">
+    <li data-correct>The target's name</li>
+    <li>Every prerequisite listed</li>
+    <li>The first prerequisite</li>
+    <li>All order-only prerequisites</li>
+  </ul>
+  <p class="quiz-explain"><code>$@</code> is the target (<code>build/test_hello</code>); <code>$^</code> is all prerequisites; <code>$&lt;</code> is the first one <a href="https://www.gnu.org/software/make/manual/html_node/Automatic-Variables.html">[GNU make]</a>. Order-only prerequisites are left out of <code>$^</code>, which is why <code>build</code> doesn't end up on the compiler's command line.</p>
+</div>
+
+<h2>What's next</h2>
+<p><strong>Lesson 2: Hello, World, test-first</strong> (not written yet). Following <a href="https://quii.gitbook.io/learn-go-with-tests/go-fundamentals/hello-world">Learn Go with Tests</a>, you'll move <code>"Hello, world"</code> out of the test and into a real <code>hello()</code> function, then add requirements one at a time: a name, an empty-name default, other languages. In C, that last stretch forces the question of who owns a string.</p>
+<p>Keep the essentials on one page with the <a href="../reference/unity-tdd-cheatsheet.html">Unity + TDD cheat sheet</a>.</p>
+
+<footer class="colophon">
+  <h3>Primary source</h3>
+  <p>Read the <a href="https://github.com/ThrowTheSwitch/Unity/blob/master/docs/UnityGettingStartedGuide.md">Unity Getting Started Guide</a>. It's short and covers everything above. Then skim the string and integer sections of the <a href="https://github.com/ThrowTheSwitch/Unity/blob/master/docs/UnityAssertionsReference.md">Assertions Reference</a>.</p>
+  <div class="ask-teacher">
+    <strong>Stuck, or curious?</strong> Ask your teacher (the agent in your terminal). Paste the exact error output. “Why does <code>-I</code> go in CPPFLAGS and not CFLAGS?” is a perfectly good question too.
+  </div>
+</footer>
+
+</main>
+<script src="../../assets/syntax-highlight-code.js"></script>
+<script src="../../assets/code-copy-button.js"></script>
+<script src="../../assets/drill-checklist.js"></script>
+<script src="../../assets/recall-prompt.js"></script>
+<script src="../../assets/quiz-multiple-choice.js"></script>
+</body>
+</html>

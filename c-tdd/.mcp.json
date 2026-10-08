@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "learn-go-with-tests": {
+      "type": "http",
+      "url": "https://quii.gitbook.io/learn-go-with-tests/~gitbook/mcp"
+    }
+  }
+}

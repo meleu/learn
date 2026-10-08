@@ -1,4 +1,4 @@
-/* syntax-highlight-code.js — Tiny dependency-free syntax highlighter for the languages that show up across these lessons: rego, json, yaml, dockerfile, shell and c. Highlights <pre><code class="lang-XXX"> blocks. */
+/* syntax-highlight-code.js — Tiny dependency-free syntax highlighter for the languages that show up across these lessons: rego, json, yaml, dockerfile, shell, make and c (including Unity test macros). Highlights <pre><code class="lang-XXX"> blocks. */
 
 (function () {
   "use strict";
@@ -126,6 +126,18 @@
       });
     },
 
+    make: function (src) {
+      var protect = [
+        { re: /#[^\n]*/g, cls: "tok-comment" },
+        { re: /\$[({][^)}\n]*[)}]|\$[@^<|*]/g, cls: "tok-string" }
+      ];
+      return tokenize(src, protect, function (chunk) {
+        return esc(chunk)
+          .replace(/^([A-Za-z_][\w.\/-]*(?:[ \t]+[\w.\/-]+)*)(?=[ \t]*:(?!=))/gm, '<span class="tok-key">$1</span>')
+          .replace(/^([A-Z_][A-Z0-9_]*)(?=[ \t]*[:?+]?=)/gm, '<span class="tok-builtin">$1</span>');
+      });
+    },
+
     c: function (src) {
       var protect = [
         { re: /\/\/[^\n]*/g, cls: "tok-comment" },
@@ -140,6 +152,7 @@
         return esc(chunk)
           .replace(kw, '<span class="tok-keyword">$1</span>')
           .replace(bi, '<span class="tok-builtin">$1</span>')
+          .replace(/\b(TEST_[A-Z0-9_]+|RUN_TEST|UNITY_BEGIN|UNITY_END)\b/g, '<span class="tok-special">$1</span>')
           .replace(/\b(0[xX][0-9A-Fa-f]+|\d+)[uUlL]*\b/g, '<span class="tok-number">$&</span>');
       });
     }
